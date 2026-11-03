@@ -1,0 +1,12 @@
+{
+  "name": "life-game-push-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end test: real server + fake push service + decryption with the reference http_ece library",
+  "scripts": {
+    "test": "node push-e2e.mjs"
+  },
+  "dependencies": {
+    "http_ece": "^1.2.0"
+  }
+}

@@ -42,3 +42,9 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# .NET server
+server/**/bin/
+server/**/obj/
+server/**/data/
+server/e2e/node_modules/

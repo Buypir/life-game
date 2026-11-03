@@ -1,0 +1,6 @@
+**/bin
+**/obj
+**/data
+e2e
+tests
+*.md
