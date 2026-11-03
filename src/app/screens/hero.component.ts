@@ -52,6 +52,53 @@ export class HeroComponent {
     }
   })();
 
+  protected readonly backupMessage = signal<string | null>(null);
+  protected readonly pendingImport = signal<string | null>(null);
+
+  protected async exportBackup(): Promise<void> {
+    const json = this.game.exportData();
+    const name = `life-game-${this.game.today()}.json`;
+    const file = new File([json], name, { type: 'application/json' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Гра про життя — резервна копія' });
+        this.backupMessage.set('Копію збережено.');
+        return;
+      }
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+    }
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    this.backupMessage.set(`Файл ${name} завантажено.`);
+  }
+
+  protected async onImportFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.pendingImport.set(await file.text());
+    this.backupMessage.set('Поточний прогрес буде замінено даними з файлу.');
+  }
+
+  protected confirmImport(): void {
+    const text = this.pendingImport();
+    this.pendingImport.set(null);
+    if (text === null) return;
+    const error = this.game.importData(text);
+    this.backupMessage.set(error ?? 'Прогрес відновлено.');
+  }
+
+  protected cancelImport(): void {
+    this.pendingImport.set(null);
+    this.backupMessage.set(null);
+  }
+
   protected toggleSound(): void {
     this.game.setSound(!this.game.sound());
   }

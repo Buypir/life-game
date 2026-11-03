@@ -152,6 +152,37 @@ export class GameStateService {
     this.commit({ ...emptySave(), sound });
   }
 
+  /** Резервна копія прогресу у вигляді JSON. */
+  exportData(): string {
+    return JSON.stringify(
+      { app: 'life-game', exportedAt: this.clock().toISOString(), save: this.save() },
+      null,
+      2,
+    );
+  }
+
+  /** Відновлює прогрес із резервної копії. Повертає текст помилки або null. */
+  importData(text: string): string | null {
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return 'Файл пошкоджений або це не JSON.';
+    }
+    const candidate =
+      data && typeof data === 'object' && 'save' in data ? (data as { save: unknown }).save : data;
+    if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      !('days' in candidate) ||
+      !('xp' in candidate)
+    ) {
+      return 'Це не резервна копія «Гри про життя».';
+    }
+    this.commit(parseSave(JSON.stringify(candidate)));
+    return null;
+  }
+
   private load(): SaveData {
     try {
       return parseSave(this.storage.getItem(STORAGE_KEY));

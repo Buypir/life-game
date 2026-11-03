@@ -626,6 +626,30 @@ app-hero {
   color: var(--danger);
 }
 
+.file-setting {
+  cursor: pointer;
+}
+
+.file-setting:focus-within {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.backup-msg {
+  font-size: 16px;
+  color: var(--green);
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.confirm-row .setting {
+  justify-content: center;
+}
+
 .install-steps {
   margin: 0;
   padding-left: 20px;

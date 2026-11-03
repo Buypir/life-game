@@ -62,6 +62,34 @@
   </button>
 </section>
 
+<section class="panel">
+  <h2 class="pixel gold section-title">РЕЗЕРВНА КОПІЯ</h2>
+  <p class="muted small-note">
+    Прогрес живе лише на цьому телефоні. Збережи копію у Файли, щоб не втратити його.
+  </p>
+  <button type="button" class="setting" (click)="exportBackup()">
+    <span>Зберегти копію</span>
+  </button>
+  <label class="setting file-setting">
+    <span>Відновити з файлу</span>
+    <input
+      type="file"
+      accept=".json,application/json"
+      class="sr-only"
+      (change)="onImportFile($event)"
+    />
+  </label>
+  @if (backupMessage(); as msg) {
+    <p class="backup-msg" role="status">{{ msg }}</p>
+  }
+  @if (pendingImport() !== null) {
+    <div class="confirm-row">
+      <button type="button" class="btn-secondary pixel" (click)="confirmImport()">ВІДНОВИТИ</button>
+      <button type="button" class="setting" (click)="cancelImport()">Скасувати</button>
+    </div>
+  }
+</section>
+
 @if (!installed) {
   <section class="panel install">
     <h2 class="pixel gold section-title">ВСТАНОВИТИ НА IPHONE</h2>

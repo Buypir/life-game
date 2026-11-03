@@ -118,6 +118,23 @@ describe('GameStateService', () => {
     expect(game.streak()).toBe(1);
   });
 
+  it('exports and imports a backup', () => {
+    const game = create();
+    game.complete('wake');
+    const backup = game.exportData();
+    game.reset();
+    expect(game.xp()).toBe(0);
+    expect(game.importData(backup)).toBeNull();
+    expect(game.xp()).toBe(10);
+    expect(game.doneToday().has('wake')).toBe(true);
+  });
+
+  it('rejects files that are not a backup', () => {
+    const game = create();
+    expect(game.importData('{oops')).toContain('JSON');
+    expect(game.importData('{"hello": 1}')).toContain('не резервна');
+  });
+
   it('reset clears progress but keeps the sound setting', () => {
     const game = create();
     game.setSound(false);
