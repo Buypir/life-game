@@ -27,10 +27,13 @@ export const ACTION_DURATION: Record<ActionKind, number> = {
   type: 3000,
   study: 3000,
   jacks: 2700,
+  sleep: 2600,
 };
 
 /** Частина анімації «Прокинутись», поки герой ще лежить. */
 const WAKE_IN_BED_MS = 1000;
+/** Частина анімації «Лягти спати», поки герой ще стоїть і позіхає. */
+const SLEEP_STAND_MS = 1100;
 const WALK_SPEED = 28; // пікселів сцени за секунду
 const SPARKLE_MS = 800;
 
@@ -137,7 +140,14 @@ export class SceneEngine {
       await this.walkTo(SPOT_X[spot]);
     }
     await this.runAction(action);
-    this.sparkleUntil = performance.now() + SPARKLE_MS;
+    if (action !== 'sleep') this.sparkleUntil = performance.now() + SPARKLE_MS;
+  }
+
+  /** Герой повертається в ліжко й засинає (коли «Лягти спати» вже виконано). */
+  async goToBed(): Promise<void> {
+    if (this.mode === 'sleep') return;
+    await this.walkTo(SPOT_X.bed);
+    this.mode = 'sleep';
   }
 
   private walkTo(x: number): Promise<void> {
@@ -181,7 +191,7 @@ export class SceneEngine {
       }
     } else if (this.mode === 'act' && this.action) {
       if (now - this.actionStart >= ACTION_DURATION[this.action]) {
-        this.mode = 'idle';
+        this.mode = this.action === 'sleep' ? 'sleep' : 'idle';
         this.action = null;
         this.wakeFromBed = false;
         const done = this.actionDone;
@@ -216,12 +226,13 @@ export class SceneEngine {
       (this.mode === 'act' &&
         this.action === 'wake' &&
         this.wakeFromBed &&
-        elapsed < WAKE_IN_BED_MS);
+        elapsed < WAKE_IN_BED_MS) ||
+      (this.mode === 'act' && this.action === 'sleep' && elapsed >= SLEEP_STAND_MS);
 
     if (inBed) {
       drawGrid(ctx, SLEEP_HEAD, 4, 36);
       drawBlanket(ctx, true);
-      if (this.mode === 'sleep') {
+      if (this.mode === 'sleep' || this.action === 'sleep') {
         drawSnore(ctx, now);
       } else if (elapsed > WAKE_IN_BED_MS * 0.45) {
         // прокинувся: «!» над головою
@@ -310,6 +321,10 @@ export class SceneEngine {
             face: FACE.lookDown,
             dy: beat(900) ? 1 : 0,
           };
+        case 'sleep':
+          return beat(500)
+            ? { ...IDLE_POSE, face: FACE.blink }
+            : { legs: 'stand', armL: 'up', armR: 'down', face: FACE.yawn };
         case 'jacks':
           return beat(300)
             ? { legs: 'jack', armL: 'up', armR: 'up', lift: 1 }

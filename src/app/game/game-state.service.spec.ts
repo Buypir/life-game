@@ -98,6 +98,26 @@ describe('GameStateService', () => {
     expect(game.xp()).toBe(10);
   });
 
+  it('keeps the hero asleep until the first task and after going to bed', () => {
+    const game = create();
+    expect(game.asleep()).toBe(true);
+    game.complete('brush');
+    expect(game.asleep()).toBe(false);
+    game.complete('sleep');
+    expect(game.asleep()).toBe(true);
+    expect(game.wentToBed()).toBe(true);
+    game.undo('sleep');
+    expect(game.asleep()).toBe(false);
+  });
+
+  it('completes the evening quest with its bonus', () => {
+    const game = create();
+    let last = null;
+    for (const id of ['dinner', 'brush-evening', 'plan', 'sleep']) last = game.complete(id);
+    expect(last?.questCompleted?.id).toBe('evening');
+    expect(game.streak()).toBe(1);
+  });
+
   it('reset clears progress but keeps the sound setting', () => {
     const game = create();
     game.setSound(false);

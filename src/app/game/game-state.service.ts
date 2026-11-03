@@ -64,7 +64,13 @@ export class GameStateService {
   readonly streak = computed(() => currentStreak(this.save().days, this.today(), QUESTS));
   readonly bestStreak = computed(() => bestStreak(this.save().days, QUESTS));
   readonly week = computed(() => recentDays(this.save().days, this.today(), QUESTS, 7));
-  readonly awake = computed(() => this.doneToday().has('wake'));
+  /** Герой спить, поки за день нічого не зроблено, і після «Лягти спати». */
+  readonly asleep = computed(() => {
+    const done = this.doneToday();
+    return done.has('sleep') || done.size === 0;
+  });
+  readonly awake = computed(() => !this.asleep());
+  readonly wentToBed = computed(() => this.doneToday().has('sleep'));
   readonly breakfastDone = computed(() => this.doneToday().has('breakfast'));
 
   /** Перевіряє, чи не настав новий день. */

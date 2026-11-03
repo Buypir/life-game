@@ -1,5 +1,5 @@
 /** Анімація, яку програє герой, коли справу виконано. */
-export type ActionKind = 'wake' | 'brush' | 'wash' | 'eat' | 'type' | 'study' | 'jacks';
+export type ActionKind = 'wake' | 'brush' | 'wash' | 'eat' | 'type' | 'study' | 'jacks' | 'sleep';
 
 /** Місце в кімнаті, куди герой іде перед дією. */
 export type Spot = 'bed' | 'desk' | 'sink';
@@ -111,6 +111,53 @@ export const QUESTS: Quest[] = [
         action: 'jacks',
         spot: 'bed',
         stat: 'strength',
+      },
+    ],
+  },
+  {
+    id: 'evening',
+    title: 'Вечір',
+    short: 'Вечір',
+    tasks: [
+      {
+        id: 'dinner',
+        title: 'Вечеря',
+        doing: 'Герой вечеряє',
+        done: 'Герой повечеряв',
+        xp: 15,
+        action: 'eat',
+        spot: 'desk',
+        stat: 'energy',
+      },
+      {
+        id: 'brush-evening',
+        title: 'Почистити зуби',
+        doing: 'Герой чистить зуби перед сном',
+        done: 'Зуби чисті, можна спати',
+        xp: 15,
+        action: 'brush',
+        spot: 'sink',
+        stat: 'energy',
+      },
+      {
+        id: 'plan',
+        title: 'План на завтра',
+        doing: 'Герой планує завтрашній день',
+        done: 'План на завтра готовий',
+        xp: 10,
+        action: 'study',
+        spot: 'desk',
+        stat: 'discipline',
+      },
+      {
+        id: 'sleep',
+        title: 'Лягти спати',
+        doing: 'Герой лягає спати',
+        done: 'Герой спить. Добраніч!',
+        xp: 15,
+        action: 'sleep',
+        spot: 'bed',
+        stat: 'energy',
       },
     ],
   },

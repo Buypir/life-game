@@ -45,7 +45,7 @@ export class TodayComponent {
   protected readonly popups = signal<Popup[]>([]);
   protected readonly banner = signal<string | null>(null);
   protected readonly toast = signal<Toast | null>(null);
-  protected readonly selectedQuestId = signal(this.firstOpenQuest()?.id ?? this.game.quests[0].id);
+  protected readonly selectedQuestId = signal(this.defaultQuestId());
 
   private nextId = 1;
   private bannerTimer?: ReturnType<typeof setTimeout>;
@@ -95,7 +95,8 @@ export class TodayComponent {
     if (active) return `${active.doing}…`;
     const last = this.lastDone();
     if (last && this.game.doneToday().has(last.id)) return last.done;
-    if (!this.game.awake()) return 'Герой спить. Час прокидатись!';
+    if (this.game.wentToBed()) return 'Герой спить. Добраніч!';
+    if (this.game.asleep()) return 'Герой спить. Час прокидатись!';
     if (this.allDone()) return 'Усе зроблено — герой відпочиває';
     return 'Герой чекає на наступну справу';
   });
@@ -154,6 +155,8 @@ export class TodayComponent {
       const result = this.game.complete(task.id);
       this.activeTask.set(null);
       if (result) this.celebrate(task, result);
+      // після «Лягти спати» герой після будь-якої справи повертається в ліжко
+      if (task.action !== 'sleep' && this.game.wentToBed()) void this.scene().goToBed();
     } finally {
       this.activeTask.set(null);
       this.busy.set(false);
@@ -203,8 +206,13 @@ export class TodayComponent {
     if (this.game.sound()) this.sound.play(melody);
   }
 
-  private firstOpenQuest(): Quest | undefined {
+  /** Квест за часом доби (ранок / робота / вечір), а якщо він виконаний — перший відкритий. */
+  private defaultQuestId(): string {
     const done = this.game.doneToday();
-    return this.game.quests.find((q) => q.tasks.some((t) => !done.has(t.id)));
+    const open = (q: Quest) => q.tasks.some((t) => !done.has(t.id));
+    const hour = new Date().getHours();
+    const preferred = hour < 12 ? 'morning' : hour < 18 ? 'work' : 'evening';
+    const pick = this.game.quests.find((q) => q.id === preferred && open(q));
+    return (pick ?? this.game.quests.find(open) ?? this.game.quests[0]).id;
   }
 }

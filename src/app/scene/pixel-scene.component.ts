@@ -70,4 +70,8 @@ export class PixelSceneComponent {
   play(action: ActionKind, spot: Spot): Promise<void> {
     return this.engine ? this.engine.play(action, spot) : Promise.resolve();
   }
+
+  goToBed(): Promise<void> {
+    return this.engine ? this.engine.goToBed() : Promise.resolve();
+  }
 }

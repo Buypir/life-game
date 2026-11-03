@@ -38,7 +38,7 @@
 <section class="panel scene-panel" #scenePanel>
   <div class="scene-wrap">
     <app-pixel-scene
-      [sleeping]="!game.awake()"
+      [sleeping]="game.asleep()"
       [breakfastDone]="game.breakfastDone()"
       [label]="caption()"
     />
