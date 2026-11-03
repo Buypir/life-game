@@ -650,6 +650,100 @@ app-hero {
   justify-content: center;
 }
 
+.status-text {
+  font-size: 17px;
+}
+
+.ok-text {
+  color: var(--green);
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.reminder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 8px 0 12px;
+  background: var(--row);
+}
+
+.reminder-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.time-input,
+.text-input {
+  height: 44px;
+  background: var(--edge);
+  color: var(--text);
+  border: 3px solid var(--edge);
+  font-family: var(--font-body);
+  font-size: 18px;
+  color-scheme: dark;
+}
+
+.time-input {
+  width: 112px;
+  padding: 0 6px;
+}
+
+.time-input:disabled {
+  color: var(--dim);
+}
+
+.text-input {
+  width: 100%;
+  padding: 0 10px;
+}
+
+.toggle {
+  width: 64px;
+  min-height: 44px;
+  border: 3px solid var(--edge);
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.toggle.on {
+  background: var(--green);
+  color: var(--bg);
+}
+
+.url-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.url-box {
+  display: block;
+  padding: 10px;
+  background: var(--edge);
+  font-family: var(--font-body);
+  font-size: 15px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.copy-btn {
+  justify-content: center;
+}
+
 .install-steps {
   margin: 0;
   padding-left: 20px;

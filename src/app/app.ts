@@ -1,18 +1,22 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { GameStateService } from './game/game-state.service';
+import { RemindersService } from './reminders/reminders.service';
 import { HeroComponent } from './screens/hero.component';
+import { RemindersComponent } from './screens/reminders.component';
 import { TodayComponent } from './screens/today.component';
 
-type Screen = 'today' | 'hero';
+type Screen = 'today' | 'reminders' | 'hero';
 
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TodayComponent, HeroComponent],
+  imports: [TodayComponent, RemindersComponent, HeroComponent],
   templateUrl: './app.html',
 })
 export class App {
   private readonly game = inject(GameStateService);
+  // сервіс нагадувань стартує разом із застосунком: він синхронізує прогрес із сервером
+  private readonly reminders = inject(RemindersService);
   protected readonly screen = signal<Screen>('today');
 
   constructor() {

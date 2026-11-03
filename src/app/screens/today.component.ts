@@ -208,6 +208,12 @@ export class TodayComponent {
 
   /** Квест за часом доби (ранок / робота / вечір), а якщо він виконаний — перший відкритий. */
   private defaultQuestId(): string {
+    // з нагадування відкриваємо одразу потрібний квест (?quest=morning)
+    const fromLink = new URLSearchParams(location.search).get('quest');
+    if (fromLink && this.game.quests.some((q) => q.id === fromLink)) {
+      history.replaceState(null, '', location.pathname);
+      return fromLink;
+    }
     const done = this.game.doneToday();
     const open = (q: Quest) => q.tasks.some((t) => !done.has(t.id));
     const hour = new Date().getHours();

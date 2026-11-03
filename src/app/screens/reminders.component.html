@@ -1,0 +1,107 @@
+<section class="panel">
+  <h1 class="pixel gold section-title">НАГАДУВАННЯ</h1>
+  <p class="status-text" [class.ok-text]="reminders.status() === 'on'">{{ statusText() }}</p>
+
+  @if (canEnable()) {
+    <button
+      type="button"
+      class="btn-primary pixel"
+      [disabled]="reminders.busy()"
+      (click)="enable()"
+    >
+      {{ reminders.busy() ? 'ЗАЧЕКАЙ…' : 'УВІМКНУТИ' }}
+    </button>
+  }
+  @if (reminders.status() === 'on') {
+    <div class="confirm-row">
+      <button type="button" class="setting" [disabled]="reminders.busy()" (click)="test()">
+        Тестове
+      </button>
+      <button
+        type="button"
+        class="setting danger"
+        [disabled]="reminders.busy()"
+        (click)="disable()"
+      >
+        Вимкнути
+      </button>
+    </div>
+  }
+  @if (message(); as m) {
+    <p class="backup-msg" [class.error-text]="m.error" role="status">{{ m.text }}</p>
+  }
+</section>
+
+<section class="panel">
+  <h2 class="pixel gold section-title">РОЗКЛАД</h2>
+  <ul class="reminder-list">
+    @for (row of rows(); track row.questId) {
+      <li class="reminder-row">
+        <label class="reminder-name" [for]="'time-' + row.questId">{{ row.title }}</label>
+        <input
+          class="time-input"
+          type="time"
+          [id]="'time-' + row.questId"
+          [value]="row.time"
+          [disabled]="!row.enabled"
+          (change)="onTime(row.questId, $event)"
+        />
+        <button
+          type="button"
+          class="toggle pixel"
+          [class.on]="row.enabled"
+          [attr.aria-pressed]="row.enabled"
+          [attr.aria-label]="'Нагадування «' + row.title + '»'"
+          (click)="reminders.toggle(row.questId)"
+        >
+          {{ row.enabled ? 'ТАК' : 'НІ' }}
+        </button>
+      </li>
+    }
+  </ul>
+  <p class="muted small-note">Нагадування приходить у вказаний час, якщо квест ще не виконано.</p>
+</section>
+
+<section class="panel">
+  <h2 class="pixel gold section-title">БУДИЛЬНИК</h2>
+  <p class="small-note">
+    Сайт не може дзвонити як справжній будильник, тому будильник ставимо в «Годиннику», а гру
+    відкриває автоматизація «Команд».
+  </p>
+  <ol class="install-steps">
+    <li>Постав будильник у «Годиннику».</li>
+    <li>«Команди» → «Автоматизація» → «+» → «Будильник» → «Коли зупинено».</li>
+    <li>Дія «Відкрити URL» з адресою нижче.</li>
+    <li>Обери «Запускати одразу».</li>
+  </ol>
+  <div class="url-row">
+    <code class="url-box">{{ alarmUrl }}</code>
+    <button type="button" class="setting copy-btn" (click)="copyAlarmUrl()">
+      {{ copied() ? 'Скопійовано' : 'Копіювати' }}
+    </button>
+  </div>
+  <p class="muted small-note">
+    Якщо адреса відкривається в Safari, а не в грі з головного екрана, — це обмеження iOS: прогрес у
+    Safari окремий.
+  </p>
+</section>
+
+<section class="panel">
+  <h2 class="pixel gold section-title">СЕРВЕР</h2>
+  <label class="small-note" for="api-url">Адреса сервера нагадувань</label>
+  <input
+    id="api-url"
+    class="text-input"
+    type="url"
+    inputmode="url"
+    autocomplete="off"
+    spellcheck="false"
+    placeholder="https://…"
+    [value]="serverDraft()"
+    (input)="onServerInput($event)"
+  />
+  <button type="button" class="setting" (click)="saveServer()">Зберегти адресу</button>
+  @if (!config.isOverridden() && config.apiUrl()) {
+    <p class="muted small-note">Адреса з config.json.</p>
+  }
+</section>

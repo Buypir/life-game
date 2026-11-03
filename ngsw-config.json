@@ -24,5 +24,17 @@
         "files": ["/**/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2|mp4|webm)"]
       }
     }
+  ],
+  "dataGroups": [
+    {
+      "name": "config",
+      "urls": ["/config.json"],
+      "cacheConfig": {
+        "strategy": "freshness",
+        "maxSize": 1,
+        "maxAge": "30d",
+        "timeout": "3s"
+      }
+    }
   ]
 }
