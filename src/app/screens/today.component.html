@@ -116,6 +116,8 @@
   <button type="button" class="btn-primary pixel" [disabled]="busy()" (click)="perform(t)">
     {{ busy() ? 'ВИКОНУЄТЬСЯ…' : 'ГОТОВО: ' + t.title.toUpperCase() }}
   </button>
+} @else if (game.wentToBed()) {
+  <div class="all-done box pixel" role="status">ДОБРАНІЧ! ДО ЗАВТРА</div>
 } @else if (otherOpenQuest(); as oq) {
   <button type="button" class="btn-secondary pixel" (click)="selectQuest(oq.id)">
     ДАЛІ: {{ oq.short.toUpperCase() }}
