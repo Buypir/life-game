@@ -1,0 +1,74 @@
+<section class="panel hero-card">
+  <div class="hero-portrait box">
+    <app-hero-sprite variant="full" />
+  </div>
+  <div class="hero-info">
+    <h1 class="pixel gold">ГЕРОЙ</h1>
+    <p class="pixel">РІВЕНЬ {{ game.level().level }}</p>
+    <div
+      class="bar"
+      role="progressbar"
+      aria-label="Досвід до наступного рівня"
+      aria-valuemin="0"
+      [attr.aria-valuenow]="game.level().into"
+      [attr.aria-valuemax]="game.level().need"
+    >
+      <span class="bar-fill gold-fill" [style.width.%]="xpPercent()"></span>
+    </div>
+    <p class="muted">
+      {{ game.level().into }} / {{ game.level().need }} XP · усього {{ game.xp() }}
+    </p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="pixel gold section-title">ХАРАКТЕРИСТИКИ</h2>
+  <ul class="stat-list">
+    @for (s of stats(); track s.key) {
+      <li class="stat">
+        <span class="stat-label">{{ s.label }}</span>
+        <span class="bar small" aria-hidden="true">
+          <span class="bar-fill" [style.width.%]="s.width"></span>
+        </span>
+        <span class="stat-value pixel">{{ s.value }}</span>
+      </li>
+    }
+  </ul>
+</section>
+
+<section class="panel">
+  <h2 class="pixel gold section-title">СЕРІЯ</h2>
+  <p class="streak-line">{{ streakText() }} поспіль · рекорд {{ bestText() }}</p>
+  <ol class="week" aria-label="Останні 7 днів">
+    @for (day of week(); track day.key) {
+      <li class="day" [class.on]="day.qualified" [class.today]="day.isToday">
+        <span class="day-box" aria-hidden="true"></span>
+        <span class="day-label">{{ day.label }}</span>
+        <span class="sr-only">{{ day.qualified ? 'зараховано' : 'не зараховано' }}</span>
+      </li>
+    }
+  </ol>
+  <p class="muted small-note">День зараховується, коли виконано хоча б один квест повністю.</p>
+</section>
+
+<section class="panel settings">
+  <h2 class="pixel gold section-title">НАЛАШТУВАННЯ</h2>
+  <button type="button" class="setting" [attr.aria-pressed]="game.sound()" (click)="toggleSound()">
+    <span>Звуки</span>
+    <span class="pixel" [class.gold]="game.sound()">{{ game.sound() ? 'УВІМК' : 'ВИМК' }}</span>
+  </button>
+  <button type="button" class="setting danger" (click)="reset()">
+    <span>{{ confirmReset() ? 'Натисни ще раз, щоб стерти все' : 'Скинути прогрес' }}</span>
+  </button>
+</section>
+
+@if (!installed) {
+  <section class="panel install">
+    <h2 class="pixel gold section-title">ВСТАНОВИТИ НА IPHONE</h2>
+    <ol class="install-steps">
+      <li>Відкрий цю сторінку в Safari.</li>
+      <li>Натисни «Поділитися».</li>
+      <li>Обери «На початковий екран».</li>
+    </ol>
+  </section>
+}

@@ -1,0 +1,44 @@
+<main class="screen">
+  @switch (screen()) {
+    @case ('today') {
+      <app-today />
+    }
+    @case ('hero') {
+      <app-hero />
+    }
+  }
+</main>
+
+<nav class="nav" aria-label="Розділи">
+  <button
+    type="button"
+    class="nav-item"
+    [class.active]="screen() === 'today'"
+    [attr.aria-current]="screen() === 'today' ? 'page' : null"
+    (click)="go('today')"
+  >
+    <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
+      <rect x="3" y="0" width="2" height="1" />
+      <rect x="2" y="1" width="4" height="1" />
+      <rect x="1" y="2" width="6" height="1" />
+      <rect x="0" y="3" width="8" height="1" />
+      <rect x="1" y="4" width="2" height="4" />
+      <rect x="5" y="4" width="2" height="4" />
+      <rect x="3" y="4" width="2" height="1" />
+    </svg>
+    Сьогодні
+  </button>
+  <button
+    type="button"
+    class="nav-item"
+    [class.active]="screen() === 'hero'"
+    [attr.aria-current]="screen() === 'hero' ? 'page' : null"
+    (click)="go('hero')"
+  >
+    <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
+      <rect x="2" y="0" width="4" height="3" />
+      <rect x="1" y="4" width="6" height="4" />
+    </svg>
+    Герой
+  </button>
+</nav>
