@@ -83,8 +83,12 @@ public sealed record PlayerSummary
     public string? Face { get; init; }
     public string? NextTaskId { get; init; }
     public string? NextTaskTitle { get; init; }
+    /// <summary>Найближчі невиконані справи — пристрій гортає їх кнопкою «Готово», не чекаючи синхронізації.</summary>
+    public TaskRef[] Upcoming { get; init; } = [];
     public DateTimeOffset UpdatedAt { get; init; }
 }
+
+public sealed record TaskRef(string Id, string Title);
 
 /// <summary>Збережена підписка одного пристрою.</summary>
 public sealed record SubscriptionRecord
@@ -181,6 +185,7 @@ public sealed record DeviceReminder(string Id, string Time, bool Enabled, string
 
 public sealed record DeviceStateResponse(
     PlayerSummary? Summary,
+    DayProgress? Progress,
     DeviceReminder[] Reminders,
     string TimeZone,
     DateTimeOffset ServerTime);

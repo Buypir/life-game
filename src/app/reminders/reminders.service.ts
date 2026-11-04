@@ -564,6 +564,10 @@ export function playerSummary(game: GameStateService) {
     face: look.face,
     nextTaskId: next?.id ?? null,
     nextTaskTitle: next?.title ?? null,
+    upcoming: QUESTS.flatMap((q) => q.tasks)
+      .filter((t) => !done.has(t.id))
+      .slice(0, 8)
+      .map((t) => ({ id: t.id, title: t.title })),
   };
 }
 

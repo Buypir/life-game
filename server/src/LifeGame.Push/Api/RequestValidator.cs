@@ -118,6 +118,8 @@ public static class RequestValidator
             return "summary.hat/face must be item ids";
         if (s.NextTaskId is not null && !IsActionId(s.NextTaskId)) return "summary.nextTaskId is invalid";
         if (s.NextTaskTitle is { Length: > 60 }) return "summary.nextTaskTitle: max 60 chars";
+        if (s.Upcoming.Length > 8 || s.Upcoming.Any(t => t is null || !IsActionId(t.Id) || string.IsNullOrWhiteSpace(t.Title) || t.Title.Length > 60))
+            return "summary.upcoming: up to 8 tasks with id and title";
         return null;
     }
 

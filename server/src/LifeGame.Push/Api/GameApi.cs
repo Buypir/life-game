@@ -71,7 +71,7 @@ public static class GameApi
         var reminders = record.Reminders
             .Select(r => new DeviceReminder(r.Id, r.Time, r.Enabled, r.Title))
             .ToArray();
-        return Results.Ok(new DeviceStateResponse(record.Summary, reminders, record.TimeZone, time.GetUtcNow()));
+        return Results.Ok(new DeviceStateResponse(record.Summary, record.Progress, reminders, record.TimeZone, time.GetUtcNow()));
     }
 
     private static async Task<IResult> PairCodeAsync(
