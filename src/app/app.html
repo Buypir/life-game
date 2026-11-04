@@ -23,14 +23,8 @@
     [attr.aria-current]="screen() === 'today' ? 'page' : null"
     (click)="go('today')"
   >
-    <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
-      <rect x="3" y="0" width="2" height="1" />
-      <rect x="2" y="1" width="4" height="1" />
-      <rect x="1" y="2" width="6" height="1" />
-      <rect x="0" y="3" width="8" height="1" />
-      <rect x="1" y="4" width="2" height="4" />
-      <rect x="5" y="4" width="2" height="4" />
-      <rect x="3" y="4" width="2" height="1" />
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="icon">
+      <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />
     </svg>
     Сьогодні
   </button>
@@ -42,13 +36,9 @@
     (click)="go('todos')"
   >
     <span class="nav-icon">
-      <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
-        <rect x="0" y="0" width="2" height="2" />
-        <rect x="3" y="0" width="5" height="1" />
-        <rect x="0" y="3" width="2" height="2" />
-        <rect x="3" y="3" width="5" height="1" />
-        <rect x="0" y="6" width="2" height="2" />
-        <rect x="3" y="6" width="5" height="1" />
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="icon">
+        <path d="M9 6h11M9 12h11M9 18h11" />
+        <path d="M4 5.5l1 1 2-2M4 11.5l1 1 2-2M4 17.5l1 1 2-2" />
       </svg>
       @if (todosBadge() > 0) {
         <span class="badge" aria-hidden="true">{{ todosBadge() }}</span>
@@ -66,12 +56,9 @@
     [attr.aria-current]="screen() === 'reminders' ? 'page' : null"
     (click)="go('reminders')"
   >
-    <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
-      <rect x="3" y="0" width="2" height="1" />
-      <rect x="2" y="1" width="4" height="1" />
-      <rect x="1" y="2" width="6" height="3" />
-      <rect x="0" y="5" width="8" height="1" />
-      <rect x="3" y="7" width="2" height="1" />
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="icon">
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+      <path d="M10 20.5h4" />
     </svg>
     Нагадування
   </button>
@@ -82,9 +69,9 @@
     [attr.aria-current]="screen() === 'hero' ? 'page' : null"
     (click)="go('hero')"
   >
-    <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
-      <rect x="2" y="0" width="4" height="3" />
-      <rect x="1" y="4" width="6" height="4" />
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="icon">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4.5 20c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5" />
     </svg>
     Герой
   </button>

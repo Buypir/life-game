@@ -8,9 +8,9 @@ import {
   input,
   viewChild,
 } from '@angular/core';
-import { AVATAR, drawGrid, drawHero, FACE, IDLE_POSE } from './sprites';
+import { drawAvatar, drawHero, STAND } from './flat';
 
-/** Статичний або «дихаючий» герой для аватарки й екрана «Герой». */
+/** Аватарка (голова в колі) або герой на весь зріст, який дихає й моргає. */
 @Component({
   selector: 'app-hero-sprite',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,13 +23,10 @@ import { AVATAR, drawGrid, drawHero, FACE, IDLE_POSE } from './sprites';
       display: block;
       width: 100%;
       height: 100%;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
     }
   `,
 })
 export class HeroSpriteComponent {
-  /** `avatar` — лише голова, `full` — герой на весь зріст із диханням. */
   readonly variant = input<'avatar' | 'full'>('full');
 
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
@@ -40,22 +37,27 @@ export class HeroSpriteComponent {
       const canvas = this.canvas().nativeElement;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      canvas.width = Math.round((canvas.clientWidth || 40) * dpr);
+      canvas.height = Math.round((canvas.clientHeight || 40) * dpr);
+
       if (this.variant() === 'avatar') {
-        canvas.width = 12;
-        canvas.height = 11;
-        drawGrid(ctx, AVATAR, 0, 0);
+        drawAvatar(ctx, canvas.width);
         return;
       }
-      canvas.width = 16;
-      canvas.height = 25;
+
+      // герой 80 одиниць заввишки в рамці 60 × 96
+      const scale = canvas.width / 60;
       let frame = 0;
       const draw = () => {
         const now = performance.now();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawHero(ctx, 2, 4, {
-          ...IDLE_POSE,
-          face: now % 3200 < 140 ? FACE.blink : undefined,
-          dy: Math.floor(now / 700) % 2,
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        drawHero(ctx, 30, 90, {
+          ...STAND,
+          bob: (Math.sin(now / 700) + 1) * 0.6,
+          eyes: now % 3600 < 140 ? 'closed' : 'open',
         });
         frame = requestAnimationFrame(draw);
       };

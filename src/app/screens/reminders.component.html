@@ -1,15 +1,10 @@
 <section class="panel">
-  <h1 class="pixel gold section-title">НАГАДУВАННЯ</h1>
+  <h1 class="section-title">Нагадування</h1>
   <p class="status-text" [class.ok-text]="reminders.status() === 'on'">{{ statusText() }}</p>
 
   @if (canEnable()) {
-    <button
-      type="button"
-      class="btn-primary pixel"
-      [disabled]="reminders.busy()"
-      (click)="enable()"
-    >
-      {{ reminders.busy() ? 'ЗАЧЕКАЙ…' : 'УВІМКНУТИ' }}
+    <button type="button" class="btn-primary" [disabled]="reminders.busy()" (click)="enable()">
+      {{ reminders.busy() ? 'Зачекай…' : 'Увімкнути' }}
     </button>
   }
   @if (reminders.status() === 'on') {
@@ -33,7 +28,7 @@
 </section>
 
 <section class="panel">
-  <h2 class="pixel gold section-title">РОЗКЛАД</h2>
+  <h2 class="section-title">Розклад</h2>
   <ul class="reminder-list">
     @for (row of rows(); track row.questId) {
       <li class="reminder-row">
@@ -48,13 +43,13 @@
         />
         <button
           type="button"
-          class="toggle pixel"
+          class="switch"
           [class.on]="row.enabled"
           [attr.aria-pressed]="row.enabled"
           [attr.aria-label]="'Нагадування «' + row.title + '»'"
           (click)="reminders.toggle(row.questId)"
         >
-          {{ row.enabled ? 'ТАК' : 'НІ' }}
+          <span class="switch-knob"></span>
         </button>
       </li>
     }
@@ -63,7 +58,7 @@
 </section>
 
 <section class="panel">
-  <h2 class="pixel gold section-title">БУДИЛЬНИК</h2>
+  <h2 class="section-title">Будильник</h2>
   <p class="small-note">
     Сайт не може дзвонити як справжній будильник, тому будильник ставимо в «Годиннику», а гру
     відкриває автоматизація «Команд».
@@ -87,7 +82,7 @@
 </section>
 
 <section class="panel">
-  <h2 class="pixel gold section-title">СЕРВЕР</h2>
+  <h2 class="section-title">Сервер</h2>
   <label class="small-note" for="api-url">Адреса сервера нагадувань</label>
   <input
     id="api-url"

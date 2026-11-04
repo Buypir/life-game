@@ -13,7 +13,7 @@ import { ActionKind, Spot } from '../game/quests';
 import { SceneEngine } from './scene-engine';
 
 @Component({
-  selector: 'app-pixel-scene',
+  selector: 'app-scene',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<canvas #canvas class="scene-canvas" role="img" [attr.aria-label]="label()"></canvas>`,
   styles: `
@@ -24,13 +24,11 @@ import { SceneEngine } from './scene-engine';
       display: block;
       width: 100%;
       height: auto;
-      aspect-ratio: 96 / 60;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
+      aspect-ratio: 320 / 200;
     }
   `,
 })
-export class PixelSceneComponent {
+export class SceneComponent {
   readonly sleeping = input(false);
   readonly breakfastDone = input(false);
   readonly label = input('Кімната героя');

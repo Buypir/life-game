@@ -1,22 +1,24 @@
 import { ActionKind, Spot } from '../game/quests';
 import {
-  drawBlanket,
-  drawBook,
   drawDesk,
+  drawHero,
   drawLaptop,
+  drawMadeBed,
   drawNightTint,
   drawPlate,
-  drawRoomBackground,
+  drawRoom,
+  drawSleepingHero,
   drawSnore,
   drawSparkles,
   drawWater,
-  HERO_Y,
+  FlatPose,
+  FLOOR_Y,
   SCENE_H,
   SCENE_W,
   SPOT_X,
+  STAND,
   timeOfDay,
-} from './room';
-import { drawGrid, drawHero, FACE, IDLE_POSE, Pose, PROPS, SLEEP_HEAD } from './sprites';
+} from './flat';
 
 /** Скільки триває кожна анімація, мс. */
 export const ACTION_DURATION: Record<ActionKind, number> = {
@@ -30,12 +32,12 @@ export const ACTION_DURATION: Record<ActionKind, number> = {
   sleep: 2600,
 };
 
-/** Частина анімації «Прокинутись», поки герой ще лежить. */
+/** Частина «Прокинутись», поки герой ще лежить. */
 const WAKE_IN_BED_MS = 1000;
-/** Частина анімації «Лягти спати», поки герой ще стоїть і позіхає. */
+/** Частина «Лягти спати», поки герой ще стоїть і позіхає. */
 const SLEEP_STAND_MS = 1100;
-const WALK_SPEED = 28; // пікселів сцени за секунду
-const SPARKLE_MS = 800;
+const WALK_SPEED = 95; // одиниць сцени за секунду
+const SPARKLE_MS = 900;
 
 type Mode = 'sleep' | 'idle' | 'walk' | 'act';
 
@@ -72,15 +74,11 @@ export class SceneEngine {
     private readonly canvas: HTMLCanvasElement,
     private readonly clock: () => Date = () => new Date(),
   ) {
-    canvas.width = SCENE_W;
-    canvas.height = SCENE_H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D недоступний');
-    ctx.imageSmoothingEnabled = false;
     this.ctx = ctx;
     this.bg = document.createElement('canvas');
-    this.bg.width = SCENE_W;
-    this.bg.height = SCENE_H;
+    this.resize();
   }
 
   get busy(): boolean {
@@ -203,22 +201,40 @@ export class SceneEngine {
     this.render(now);
   }
 
-  private ensureBackground(): void {
+  /** Підганяє роздільність полотна під його ширину на екрані й щільність пікселів. */
+  private resize(): number {
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const cssWidth = this.canvas.clientWidth || SCENE_W * 2;
+    const width = Math.round(cssWidth * dpr);
+    const height = Math.round((width * SCENE_H) / SCENE_W);
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.bg.width = width;
+      this.bg.height = height;
+      this.bgStamp = '';
+    }
+    return width / SCENE_W;
+  }
+
+  private ensureBackground(scale: number): void {
     const now = this.clock();
-    const stamp = `${now.getHours()}:${now.getMinutes()}`;
+    const stamp = `${now.getHours()}:${now.getMinutes()}:${this.bg.width}`;
     if (stamp === this.bgStamp) return;
     this.bgStamp = stamp;
     const bctx = this.bg.getContext('2d');
     if (!bctx) return;
-    bctx.imageSmoothingEnabled = false;
-    drawRoomBackground(bctx, now);
+    bctx.setTransform(scale, 0, 0, scale, 0, 0);
+    drawRoom(bctx, now);
   }
 
   private render(now: number): void {
+    const scale = this.resize();
+    this.ensureBackground(scale);
     const ctx = this.ctx;
-    this.ensureBackground();
-    ctx.clearRect(0, 0, SCENE_W, SCENE_H);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.bg, 0, 0);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
     const elapsed = now - this.actionStart;
     const inBed =
@@ -230,24 +246,17 @@ export class SceneEngine {
       (this.mode === 'act' && this.action === 'sleep' && elapsed >= SLEEP_STAND_MS);
 
     if (inBed) {
-      drawGrid(ctx, SLEEP_HEAD, 4, 36);
-      drawBlanket(ctx, true);
+      drawSleepingHero(ctx, now);
       if (this.mode === 'sleep' || this.action === 'sleep') {
         drawSnore(ctx, now);
       } else if (elapsed > WAKE_IN_BED_MS * 0.45) {
-        // прокинувся: «!» над головою
-        ctx.fillStyle = '#ffcc33';
-        ctx.fillRect(8, 29, 1, 3);
-        ctx.fillRect(8, 33, 1, 1);
+        ctx.fillStyle = '#3B5BFD';
+        ctx.font = '800 16px Manrope, system-ui, sans-serif';
+        ctx.fillText('!', 30, 112);
       }
     } else {
-      drawBlanket(ctx, false);
-    }
-
-    if (!inBed) {
-      const x = Math.round(this.heroX);
-      const pose = this.pose(now, elapsed);
-      drawHero(ctx, x, HERO_Y, pose);
+      drawMadeBed(ctx);
+      drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
     }
 
     // передній план: стіл і те, що на ньому
@@ -256,88 +265,119 @@ export class SceneEngine {
     drawLaptop(ctx, acting === 'type', now);
     if (acting === 'eat') drawPlate(ctx, true);
     else if (this.flags.breakfastDone) drawPlate(ctx, false);
-    if (acting === 'study') drawBook(ctx, Math.floor(elapsed / 600) % 2 === 1);
     if (acting === 'wash') drawWater(ctx, now);
 
-    if (!inBed && now < this.sparkleUntil) {
-      drawSparkles(ctx, Math.round(this.heroX), HERO_Y, now);
+    const sparkleLeft = this.sparkleUntil - now;
+    if (!inBed && sparkleLeft > 0) {
+      drawSparkles(ctx, this.heroX, FLOOR_Y - 50, now, sparkleLeft / SPARKLE_MS);
     }
 
     if (timeOfDay(this.clock().getHours()) === 'night') drawNightTint(ctx);
   }
 
-  private pose(now: number, elapsed: number): Pose {
+  private pose(now: number, elapsed: number): FlatPose {
+    const wave = (ms: number) => Math.sin((elapsed / ms) * Math.PI * 2);
+
     if (this.mode === 'walk') {
-      const step = Math.floor(now / 130) % 2;
-      return { ...IDLE_POSE, legs: step ? 'walkA' : 'walkB' };
+      const s = Math.sin((now / 260) * Math.PI);
+      return {
+        handL: { x: 3 + s * 2, y: 25 - Math.abs(s) * 2 },
+        handR: { x: 3 - s * 2, y: 25 - Math.abs(s) * 2 },
+        footL: { x: 0, y: Math.max(0, s) * 4 },
+        footR: { x: 0, y: Math.max(0, -s) * 4 },
+        bob: Math.abs(s) * -1.5,
+      };
     }
 
     if (this.mode === 'act' && this.action) {
-      const beat = (ms: number) => Math.floor(elapsed / ms) % 2 === 1;
       switch (this.action) {
         case 'wake': {
           const local = this.wakeFromBed ? elapsed - WAKE_IN_BED_MS : elapsed;
-          const up = Math.floor(local / 450) % 2 === 0;
-          return up
-            ? { legs: 'stand', armL: 'up', armR: 'up', face: FACE.yawn }
-            : { ...IDLE_POSE, face: FACE.blink };
+          const stretch = Math.max(0, Math.sin((local / 900) * Math.PI));
+          return {
+            ...STAND,
+            handL: { x: 3 + stretch * 5, y: 26 - stretch * 50 },
+            handR: { x: 3 + stretch * 5, y: 26 - stretch * 50 },
+            eyes: stretch > 0.3 ? 'closed' : 'open',
+            mouth: stretch > 0.3 ? 'open' : 'smile',
+            lift: stretch * 1.5,
+          };
         }
         case 'brush':
           return {
-            legs: 'stand',
-            armL: 'down',
-            armR: 'mouth',
-            props: beat(180) ? PROPS.brushB : PROPS.brushA,
-            face: beat(1200) ? FACE.blink : undefined,
+            ...STAND,
+            handR: { x: -9 + wave(220) * 2.5, y: -9 },
+            eyes: Math.floor(elapsed / 1200) % 2 ? 'closed' : 'open',
+            mouth: 'none',
+            props: ['brush', 'foam'],
           };
-        case 'wash':
+        case 'wash': {
+          const w = wave(420);
           return {
-            legs: 'stand',
-            armL: 'face',
-            armR: 'face',
-            face: FACE.blink,
-            props: beat(200) ? PROPS.dropsB : PROPS.dropsA,
-            dy: beat(400) ? 1 : 0,
+            ...STAND,
+            handL: { x: -7, y: -12 + w * 2.5 },
+            handR: { x: -7, y: -12 + w * 2.5 },
+            eyes: 'closed',
+            mouth: 'none',
+            bob: 1 + w,
+            props: ['drops'],
           };
-        case 'eat':
-          return beat(420)
-            ? {
-                legs: 'stand',
-                armL: 'down',
-                armR: 'type',
-                props: PROPS.sandwichHold,
-                face: FACE.chew,
-              }
-            : { legs: 'stand', armL: 'down', armR: 'mouth', props: PROPS.sandwichMouth };
+        }
+        case 'eat': {
+          const bite = Math.floor(elapsed / 650) % 2 === 0;
+          return {
+            ...STAND,
+            handR: bite ? { x: -9, y: -9 } : { x: 1, y: 14 },
+            mouth: bite ? 'none' : 'open',
+            props: ['sandwich'],
+          };
+        }
         case 'type': {
-          const left = beat(120);
-          return { legs: 'stand', armL: left ? 'type' : 'down', armR: left ? 'down' : 'type' };
+          const tap = Math.floor(elapsed / 130) % 2;
+          return {
+            ...STAND,
+            handL: { x: -18, y: 19 + tap * 2 },
+            handR: { x: 18, y: 21 - tap * 2 },
+            mouth: 'none',
+          };
         }
         case 'study':
           return {
-            legs: 'stand',
-            armL: 'type',
-            armR: 'type',
-            face: FACE.lookDown,
-            dy: beat(900) ? 1 : 0,
+            ...STAND,
+            handL: { x: -4, y: 13 },
+            handR: { x: -4, y: 13 },
+            headDown: 2 + wave(1800),
+            mouth: 'none',
+            props: ['book'],
           };
-        case 'sleep':
-          return beat(500)
-            ? { ...IDLE_POSE, face: FACE.blink }
-            : { legs: 'stand', armL: 'up', armR: 'down', face: FACE.yawn };
-        case 'jacks':
-          return beat(300)
-            ? { legs: 'jack', armL: 'up', armR: 'up', lift: 1 }
-            : { legs: 'stand', armL: 'down', armR: 'down' };
+        case 'jacks': {
+          const up = Math.max(0, Math.sin((elapsed / 600) * Math.PI * 2));
+          return {
+            handL: { x: 3 + up * 9, y: 26 - up * 50 },
+            handR: { x: 3 + up * 9, y: 26 - up * 50 },
+            footL: { x: up * 9, y: 0 },
+            footR: { x: up * 9, y: 0 },
+            lift: up * 4,
+            mouth: 'open',
+          };
+        }
+        case 'sleep': {
+          const yawn = Math.max(0, Math.sin((elapsed / 1100) * Math.PI));
+          return {
+            ...STAND,
+            handL: { x: 3 + yawn * 4, y: 26 - yawn * 46 },
+            eyes: yawn > 0.4 ? 'closed' : 'open',
+            mouth: yawn > 0.4 ? 'open' : 'none',
+          };
+        }
       }
     }
 
     // очікування: дихає й моргає
-    const blink = now % 3200 < 140;
     return {
-      ...IDLE_POSE,
-      face: blink ? FACE.blink : undefined,
-      dy: Math.floor(now / 700) % 2,
+      ...STAND,
+      bob: (Math.sin(now / 700) + 1) * 0.6,
+      eyes: now % 3600 < 140 ? 'closed' : 'open',
     };
   }
 }

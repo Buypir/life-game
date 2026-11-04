@@ -1,10 +1,10 @@
 <section class="panel hero-card">
-  <div class="hero-portrait box">
+  <div class="hero-portrait">
     <app-hero-sprite variant="full" />
   </div>
   <div class="hero-info">
-    <h1 class="pixel gold">ГЕРОЙ</h1>
-    <p class="pixel">РІВЕНЬ {{ game.level().level }}</p>
+    <h1 class="hero-name">Герой</h1>
+    <p class="hero-level">Рівень {{ game.level().level }}</p>
     <div
       class="bar"
       role="progressbar"
@@ -22,7 +22,7 @@
 </section>
 
 <section class="panel">
-  <h2 class="pixel gold section-title">ХАРАКТЕРИСТИКИ</h2>
+  <h2 class="section-title">Характеристики</h2>
   <ul class="stat-list">
     @for (s of stats(); track s.key) {
       <li class="stat">
@@ -30,14 +30,14 @@
         <span class="bar small" aria-hidden="true">
           <span class="bar-fill" [style.width.%]="s.width"></span>
         </span>
-        <span class="stat-value pixel">{{ s.value }}</span>
+        <span class="stat-value">{{ s.value }}</span>
       </li>
     }
   </ul>
 </section>
 
 <section class="panel">
-  <h2 class="pixel gold section-title">СЕРІЯ</h2>
+  <h2 class="section-title">Серія</h2>
   <p class="streak-line">{{ streakText() }} поспіль · рекорд {{ bestText() }}</p>
   <ol class="week" aria-label="Останні 7 днів">
     @for (day of week(); track day.key) {
@@ -52,10 +52,12 @@
 </section>
 
 <section class="panel settings">
-  <h2 class="pixel gold section-title">НАЛАШТУВАННЯ</h2>
+  <h2 class="section-title">Налаштування</h2>
   <button type="button" class="setting" [attr.aria-pressed]="game.sound()" (click)="toggleSound()">
     <span>Звуки</span>
-    <span class="pixel" [class.gold]="game.sound()">{{ game.sound() ? 'УВІМК' : 'ВИМК' }}</span>
+    <span class="switch" [class.on]="game.sound()" aria-hidden="true"
+      ><span class="switch-knob"></span
+    ></span>
   </button>
   <button type="button" class="setting danger" (click)="reset()">
     <span>{{ confirmReset() ? 'Натисни ще раз, щоб стерти все' : 'Скинути прогрес' }}</span>
@@ -63,7 +65,7 @@
 </section>
 
 <section class="panel">
-  <h2 class="pixel gold section-title">РЕЗЕРВНА КОПІЯ</h2>
+  <h2 class="section-title">Резервна копія</h2>
   <p class="muted small-note">
     Прогрес живе лише на цьому телефоні. Збережи копію у Файли, щоб не втратити його.
   </p>
@@ -84,7 +86,7 @@
   }
   @if (pendingImport() !== null) {
     <div class="confirm-row">
-      <button type="button" class="btn-secondary pixel" (click)="confirmImport()">ВІДНОВИТИ</button>
+      <button type="button" class="btn-primary" (click)="confirmImport()">Відновити</button>
       <button type="button" class="setting" (click)="cancelImport()">Скасувати</button>
     </div>
   }
@@ -92,7 +94,7 @@
 
 @if (!installed) {
   <section class="panel install">
-    <h2 class="pixel gold section-title">ВСТАНОВИТИ НА IPHONE</h2>
+    <h2 class="section-title">Встановити на iPhone</h2>
     <ol class="install-steps">
       <li>Відкрий цю сторінку в Safari.</li>
       <li>Натисни «Поділитися».</li>

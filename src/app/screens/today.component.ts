@@ -11,8 +11,7 @@ import { CompleteResult, GameStateService } from '../game/game-state.service';
 import { daysLabel } from '../game/plural';
 import { Quest, Task } from '../game/quests';
 import { SoundService } from '../game/sound.service';
-import { HeroSpriteComponent } from '../scene/hero-sprite.component';
-import { PixelSceneComponent } from '../scene/pixel-scene.component';
+import { SceneComponent } from '../scene/scene.component';
 
 interface Popup {
   id: number;
@@ -25,18 +24,16 @@ interface Toast {
   taskId: string;
 }
 
-const XP_SEGMENTS = 10;
-
 @Component({
   selector: 'app-today',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PixelSceneComponent, HeroSpriteComponent],
+  imports: [SceneComponent],
   templateUrl: './today.component.html',
 })
 export class TodayComponent {
   protected readonly game = inject(GameStateService);
   private readonly sound = inject(SoundService);
-  private readonly scene = viewChild.required(PixelSceneComponent);
+  private readonly scene = viewChild.required(SceneComponent);
   private readonly scenePanel = viewChild.required<ElementRef<HTMLElement>>('scenePanel');
 
   protected readonly busy = signal(false);
@@ -55,10 +52,21 @@ export class TodayComponent {
   protected readonly streak = this.game.streak;
   protected readonly streakLabel = computed(() => `${daysLabel(this.streak())} поспіль`);
 
-  protected readonly segments = computed(() => {
+  /** Кільце рівня: довжина заповненої дуги з 157 (2πr, r = 25). */
+  protected readonly ringDash = computed(() => {
     const { into, need } = this.level();
-    const filled = Math.floor((into / need) * XP_SEGMENTS);
-    return Array.from({ length: XP_SEGMENTS }, (_, i) => i < filled);
+    const full = 2 * Math.PI * 25;
+    return `${((into / need) * full).toFixed(1)} ${full.toFixed(1)}`;
+  });
+
+  protected readonly dateLabel = computed(() => {
+    const [y, m, d] = this.game.today().split('-').map(Number);
+    const text = new Intl.DateTimeFormat('uk-UA', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date(y, m - 1, d));
+    return text.charAt(0).toUpperCase() + text.slice(1);
   });
 
   protected readonly quest = computed(
@@ -180,10 +188,10 @@ export class TodayComponent {
     setTimeout(() => this.popups.update((list) => list.filter((p) => p.id !== popup.id)), 1400);
 
     if (result.leveledUp) {
-      this.showBanner(`НОВИЙ РІВЕНЬ ${result.level}!`);
+      this.showBanner(`Новий рівень ${result.level}!`);
       this.beep('level');
     } else if (result.questCompleted) {
-      this.showBanner(`КВЕСТ «${result.questCompleted.short.toUpperCase()}» ВИКОНАНО!`);
+      this.showBanner(`Квест «${result.questCompleted.title}» виконано!`);
       this.beep('quest');
     } else {
       this.beep('complete');
