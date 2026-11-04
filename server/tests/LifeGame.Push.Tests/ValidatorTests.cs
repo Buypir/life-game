@@ -66,6 +66,21 @@ public static class ValidatorTests
     }
 
     [Test]
+    public static void ValidatesEvents()
+    {
+        var now = new DateTimeOffset(2026, 11, 4, 10, 0, 0, TimeSpan.Zero);
+        EventReminder Make(string id = "t1", int addMinutes = 60, string url = "./") =>
+            new() { Id = id, NotifyAt = now.AddMinutes(addMinutes), Title = "Стрижка", Body = "О 14:00", Url = url };
+
+        Check.Null(RequestValidator.Events(new EventsRequest([Make(), Make("t2")]), now));
+        Check.Null(RequestValidator.Events(new EventsRequest([]), now));
+        Check.Contains("required", RequestValidator.Events(new EventsRequest(null), now));
+        Check.Contains("duplicate", RequestValidator.Events(new EventsRequest([Make(), Make()]), now));
+        Check.Contains("out of range", RequestValidator.Events(new EventsRequest([Make(addMinutes: -5 * 24 * 60)]), now));
+        Check.Contains("relative", RequestValidator.Events(new EventsRequest([Make(url: "https://evil.example.com")]), now));
+    }
+
+    [Test]
     public static void ValidatesProgress()
     {
         Check.Null(RequestValidator.Progress(new ProgressRequest("2026-11-04", ["morning"])));

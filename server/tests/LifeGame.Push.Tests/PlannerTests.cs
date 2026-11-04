@@ -92,6 +92,36 @@ public static class PlannerTests
         Check.Equal(1, ReminderPlanner.DueReminders(sub, KyivTime(9, 35), Grace).Count);
     }
 
+    private static EventReminder Haircut(DateTimeOffset notifyAt) =>
+        new() { Id = "t1", NotifyAt = notifyAt, Title = "Стрижка", Body = "О 14:00, через 30 хв" };
+
+    [Test]
+    public static void EventIsDueOnlyFromItsTimeWithinGrace()
+    {
+        var at = KyivTime(13, 30);
+        var sub = Subscription() with { Events = [Haircut(at)] };
+        Check.Equal(0, ReminderPlanner.DueEvents(sub, at.AddSeconds(-1), Grace).Count);
+        Check.Equal(1, ReminderPlanner.DueEvents(sub, at, Grace).Count);
+        Check.Equal(1, ReminderPlanner.DueEvents(sub, at.AddMinutes(90), Grace).Count);
+        Check.Equal(0, ReminderPlanner.DueEvents(sub, at.AddMinutes(91), Grace).Count);
+    }
+
+    [Test]
+    public static void EventIsSentOnceButAgainIfRescheduled()
+    {
+        var at = KyivTime(13, 30);
+        var ev = Haircut(at);
+        var sent = Subscription() with
+        {
+            Events = [ev],
+            LastSent = new() { [ReminderPlanner.EventKey(ev)] = ReminderPlanner.EventStamp(ev) },
+        };
+        Check.Equal(0, ReminderPlanner.DueEvents(sent, at.AddMinutes(1), Grace).Count);
+
+        var moved = sent with { Events = [ev with { NotifyAt = at.AddMinutes(30) }] };
+        Check.Equal(1, ReminderPlanner.DueEvents(moved, at.AddMinutes(31), Grace).Count);
+    }
+
     [Test]
     public static void PayloadMatchesAngularServiceWorkerFormat()
     {

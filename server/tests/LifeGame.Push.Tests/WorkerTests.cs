@@ -91,6 +91,27 @@ public sealed class WorkerTests : IDisposable
     }
 
     [Test]
+    public async Task SendsEventRemindersOnce()
+    {
+        var (worker, store) = Create();
+        var notifyAt = _time.Now.AddMinutes(2);
+        await store.UpsertAsync(Subscription("s1") with
+        {
+            Events = [new EventReminder { Id = "haircut", NotifyAt = notifyAt, Title = "Стрижка", Body = "Через 30 хв", Url = "./?todo=haircut" }],
+        });
+
+        Check.Equal(0, await worker.TickAsync(default));
+        _time.Advance(TimeSpan.FromMinutes(2));
+        Check.Equal(1, await worker.TickAsync(default));
+        _time.Advance(TimeSpan.FromMinutes(1));
+        Check.Equal(0, await worker.TickAsync(default));
+
+        var payload = JsonDocument.Parse(_sender.Sent.Single().Payload).RootElement.GetProperty("notification");
+        Check.Equal("Стрижка", payload.GetProperty("title").GetString());
+        Check.Equal("event-haircut", payload.GetProperty("tag").GetString());
+    }
+
+    [Test]
     public async Task StoreSurvivesRestart()
     {
         var (_, store) = Create();

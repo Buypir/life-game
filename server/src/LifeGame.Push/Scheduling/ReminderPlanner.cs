@@ -79,6 +79,18 @@ public static class ReminderPlanner
         return due;
     }
 
+    public static string EventKey(EventReminder e) => $"event:{e.Id}";
+
+    public static string EventStamp(EventReminder e) => e.NotifyAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+
+    /// <summary>Разові нагадування, час яких настав (не пізніше ніж на <paramref name="grace"/>) і які ще не надсилали.</summary>
+    public static IReadOnlyList<EventReminder> DueEvents(SubscriptionRecord subscription, DateTimeOffset utcNow, TimeSpan grace) =>
+        subscription.Events
+            .Where(e => e.NotifyAt <= utcNow && utcNow - e.NotifyAt <= grace)
+            .Where(e => !(subscription.LastSent.TryGetValue(EventKey(e), out var stamp) && stamp == EventStamp(e)))
+            .OrderBy(e => e.NotifyAt)
+            .ToList();
+
     /// <summary>
     /// Вміст у форматі, який розуміє Angular Service Worker: він сам покаже сповіщення,
     /// а натискання відкриє застосунок за адресою <c>url</c>.

@@ -22,6 +22,21 @@ public sealed record Reminder
     public string Url { get; init; } = "./";
 }
 
+/// <summary>Разове нагадування про справу зі списку (напр. «Стрижка о 14:00, нагадати за 30 хв»).</summary>
+public sealed record EventReminder
+{
+    public required string Id { get; init; }
+
+    /// <summary>Коли надіслати сповіщення (UTC або з зсувом).</summary>
+    public required DateTimeOffset NotifyAt { get; init; }
+
+    public required string Title { get; init; }
+
+    public required string Body { get; init; }
+
+    public string Url { get; init; } = "./";
+}
+
 /// <summary>Що вже виконано сьогодні — щоб не нагадувати про закриті квести.</summary>
 public sealed record DayProgress
 {
@@ -48,9 +63,15 @@ public sealed record SubscriptionRecord
 
     public Reminder[] Reminders { get; init; } = [];
 
+    /// <summary>Разові нагадування про справи.</summary>
+    public EventReminder[] Events { get; init; } = [];
+
     public DayProgress? Progress { get; init; }
 
-    /// <summary>Id нагадування → локальна дата (yyyy-MM-dd), коли його востаннє надіслано.</summary>
+    /// <summary>
+    /// Id нагадування → локальна дата (yyyy-MM-dd), коли його востаннє надіслано.
+    /// Для разових: «event:id» → час NotifyAt, для якого вже надіслано.
+    /// </summary>
     public Dictionary<string, string> LastSent { get; init; } = [];
 
     public DateTimeOffset CreatedAt { get; init; }
@@ -75,6 +96,8 @@ public sealed record UpdateSubscriptionRequest(
     Reminder[]? Reminders);
 
 public sealed record ProgressRequest(string? Date, string[]? DoneQuests);
+
+public sealed record EventsRequest(EventReminder[]? Events);
 
 public sealed record CreatedSubscriptionResponse(string Id, string Secret);
 

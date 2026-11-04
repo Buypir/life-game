@@ -58,6 +58,27 @@ public static class RequestValidator
         return null;
     }
 
+    public const int MaxEvents = 100;
+
+    public static string? Events(EventsRequest? request, DateTimeOffset now)
+    {
+        if (request?.Events is not { } events) return "events is required";
+        if (events.Length > MaxEvents) return $"at most {MaxEvents} events";
+        var ids = new HashSet<string>();
+        foreach (var e in events)
+        {
+            if (e is null) return "event must not be null";
+            if (string.IsNullOrWhiteSpace(e.Id) || e.Id.Length > 40) return "event.id is required (max 40 chars)";
+            if (!ids.Add(e.Id)) return $"duplicate event id {e.Id}";
+            if (e.NotifyAt < now.AddDays(-2) || e.NotifyAt > now.AddDays(400)) return $"event {e.Id}: notifyAt is out of range";
+            if (string.IsNullOrWhiteSpace(e.Title) || e.Title.Length > 80) return $"event {e.Id}: title is required (max 80 chars)";
+            if (string.IsNullOrWhiteSpace(e.Body) || e.Body.Length > 200) return $"event {e.Id}: body is required (max 200 chars)";
+            if (e.Url is null || e.Url.Length > 200 || e.Url.StartsWith("//") || Uri.IsWellFormedUriString(e.Url, UriKind.Absolute))
+                return $"event {e.Id}: url must be a relative path";
+        }
+        return null;
+    }
+
     public static string? Progress(ProgressRequest? request)
     {
         if (request is null) return "body is required";

@@ -90,6 +90,28 @@ public sealed class ReminderWorker(
                 }
             }
 
+            foreach (var ev in ReminderPlanner.DueEvents(subscription, now, grace))
+            {
+                var key = $"{subscription.Id}/{ReminderPlanner.EventKey(ev)}/{ReminderPlanner.EventStamp(ev)}";
+                if (_retries.TryGetValue(key, out var retry) && retry.NextTry > now) continue;
+
+                var payload = ReminderPlanner.BuildPayload(ev.Title, ev.Body, $"event-{ev.Id}", ev.Url);
+                var result = await sender.SendAsync(subscription, payload, SafeTopic("e" + ev.Id), ct);
+                if (result.Outcome == PushOutcome.Gone)
+                {
+                    await store.RemoveAsync(subscription.Id, ct);
+                    goto nextSubscription;
+                }
+                if (result.Outcome == PushOutcome.Retry && retry.Attempts < Backoff.Length)
+                {
+                    _retries[key] = (retry.Attempts + 1, now + Backoff[retry.Attempts]);
+                    continue;
+                }
+                _retries.Remove(key);
+                if (result.Outcome == PushOutcome.Delivered) sent++;
+                await MarkSent(subscription.Id, ReminderPlanner.EventKey(ev), ReminderPlanner.EventStamp(ev), ct);
+            }
+
             nextSubscription:;
         }
 

@@ -218,6 +218,20 @@ try {
   await sleep(3500);
   check(received.length === 0, 'done quest and future reminder are not sent, morning is not repeated');
 
+  // разове нагадування про справу: «Стрижка», час сповіщення вже настав
+  const events = await api('PUT', `/api/subscriptions/${id}/events`, {
+    events: [
+      { id: 'haircut', notifyAt: new Date(Date.now() - 5_000).toISOString(), title: 'Стрижка', body: 'О 14:00 — через 30 хв', url: './?todo=haircut' },
+      { id: 'dentist', notifyAt: new Date(Date.now() + 3_600_000).toISOString(), title: 'Стоматолог', body: 'Завтра', url: './' },
+    ],
+  }, auth);
+  check(events.status === 204, 'stores event reminders');
+  const eventPush = await waitFor(() => received.length > 0 && received.shift(), 15_000, 'event reminder');
+  const eventMessage = browser.decrypt(eventPush.body);
+  check(eventMessage.notification.title === 'Стрижка' && eventMessage.notification.tag === 'event-haircut', 'event reminder arrives and decrypts');
+  await sleep(2500);
+  check(received.length === 0, 'event is sent once, future event waits');
+
   // протухла підписка видаляється
   const gone = makeBrowser();
   const goneSub = await api('POST', '/api/subscriptions', {

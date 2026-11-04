@@ -22,6 +22,7 @@ public static class PushApi
         api.MapPost("/subscriptions", CreateAsync);
         api.MapPut("/subscriptions/{id}", UpdateAsync);
         api.MapPut("/subscriptions/{id}/progress", ProgressAsync);
+        api.MapPut("/subscriptions/{id}/events", EventsAsync);
         api.MapPost("/subscriptions/{id}/test", TestAsync);
         api.MapDelete("/subscriptions/{id}", DeleteAsync);
         return app;
@@ -105,6 +106,27 @@ public static class PushApi
         var updated = await store.UpdateAsync(id, s => s with
         {
             Progress = new DayProgress { Date = request.Date!, DoneQuests = request.DoneQuests ?? [] },
+        }, ct);
+        return updated is null ? Results.NotFound() : Results.NoContent();
+    }
+
+    /// <summary>Замінює всі разові нагадування пристрою (клієнт надсилає повний актуальний список).</summary>
+    private static async Task<IResult> EventsAsync(
+        string id, EventsRequest request, HttpContext http, SubscriptionStore store, TimeProvider time, CancellationToken ct)
+    {
+        if (Authorize(id, http, store) is { } denied) return denied;
+        if (RequestValidator.Events(request, time.GetUtcNow()) is { } error) return BadRequest(error);
+
+        var events = request.Events!;
+        var keep = events.Select(ReminderPlanner.EventKey).ToHashSet();
+        var updated = await store.UpdateAsync(id, s => s with
+        {
+            Events = events,
+            // забуваємо позначки «надіслано» для справ, яких уже немає
+            LastSent = s.LastSent
+                .Where(kv => !kv.Key.StartsWith("event:", StringComparison.Ordinal) || keep.Contains(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value),
+            UpdatedAt = time.GetUtcNow(),
         }, ct);
         return updated is null ? Results.NotFound() : Results.NoContent();
     }
