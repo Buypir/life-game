@@ -95,7 +95,7 @@ public class LifeGameNativePlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManage
     /// Замінює всі відстежувані місця. Події «приїхав» ловить AppDelegate навіть із закритою грою.
     @objc func setPlaces(_ call: CAPPluginCall) {
         let enabled = call.getBool("enabled") ?? false
-        let places = call.getArray("places", JSObject.self) ?? []
+        let places = call.options["places"] as? [[String: Any]] ?? []
         DispatchQueue.main.async {
             guard let manager = self.manager else {
                 call.reject("Геолокація ще не готова")

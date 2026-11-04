@@ -28,8 +28,10 @@ enum WakeAlarm {
         guard try await manager.requestAuthorization() == .authorized else {
             throw WakeAlarmError.notAuthorized
         }
+        // ініціалізатор зі stopButton є з iOS 26.0 (новіший без нього — лише в нових SDK)
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: title),
+            stopButton: AlarmButton(text: "Стоп", textColor: .white, systemImageName: "stop.circle"),
             secondaryButton: nil,
             secondaryButtonBehavior: nil)
         let attributes = AlarmAttributes(

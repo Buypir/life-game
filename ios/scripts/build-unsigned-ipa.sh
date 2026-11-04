@@ -16,7 +16,7 @@ npx ng build
 npx cap sync ios
 
 xcodebuild -project ios/App/App.xcodeproj -scheme App -resolvePackageDependencies
-xcodebuild \
+if ! xcodebuild \
   -project ios/App/App.xcodeproj \
   -scheme App \
   -configuration Release \
@@ -24,7 +24,13 @@ xcodebuild \
   -destination 'generic/platform=iOS' \
   -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-  build
+  build > build.log 2>&1; then
+  # коротко: лише помилки компіляції — їх видно і в кінці логу, і як Annotations на сторінці запуску
+  echo "===== ПОМИЛКИ ЗБІРКИ ====="
+  grep -E "error:" build.log | sort -u | head -40 | tee /dev/stderr | sed 's/^/::error::/' || true
+  tail -20 build.log
+  exit 65
+fi
 
 rm -rf Payload LifeGame.ipa
 mkdir Payload

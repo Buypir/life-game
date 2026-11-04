@@ -131,7 +131,7 @@ enum GameTask: String, AppEnum {
 
 struct CompleteTaskIntent: AppIntent {
     static var title: LocalizedStringResource { "Відмітити справу" }
-    static var description: IntentDescription { "Зараховує справу в «Грі про життя»." }
+    static var description: IntentDescription { IntentDescription("Зараховує справу в «Грі про життя».") }
     static var openAppWhenRun: Bool { false }
 
     @Parameter(title: "Справа")
