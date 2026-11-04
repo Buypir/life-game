@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  output,
+  signal,
+} from '@angular/core';
 import { PLACE_LABELS, PlaceId } from '../game/activities';
 import { GameStateService } from '../game/game-state.service';
 import { TravelService } from '../game/travel.service';
@@ -27,6 +34,13 @@ export class HeroComponent {
   protected readonly travel = inject(TravelService);
   private readonly reminders = inject(RemindersService);
   protected readonly confirmReset = signal(false);
+  readonly openReminders = output<void>();
+  protected readonly editingName = signal(false);
+
+  protected saveName(value: string): void {
+    this.game.setName(value);
+    this.editingName.set(false);
+  }
   protected readonly streakText = computed(() => daysLabel(this.game.streak()));
   protected readonly bestText = computed(() => daysLabel(this.game.bestStreak()));
 

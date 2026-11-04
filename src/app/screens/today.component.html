@@ -39,6 +39,10 @@
     </svg>
     Серія {{ streakLabel() }}
   </span>
+  <span class="stat-chip" [attr.aria-label]="'Монет: ' + game.coins()">
+    <span class="coin small" aria-hidden="true"></span>
+    {{ game.coins() }}
+  </span>
 </div>
 
 <section class="panel scene-panel" #scenePanel>
@@ -48,6 +52,10 @@
       [breakfastDone]="game.breakfastDone()"
       [location]="game.location()"
       [label]="caption()"
+      [look]="game.look()"
+      [room]="game.roomItems()"
+      [messy]="game.messy()"
+      [focus]="focusScene()"
     />
     @for (p of popups(); track p.id) {
       <div class="xp-popup" aria-hidden="true">{{ p.text }}</div>
@@ -95,6 +103,58 @@
   </div>
 
   @if (selectedQuestId() === moreTab) {
+    <div class="focus-card">
+      @if (game.focus(); as f) {
+        <div class="focus-head">
+          <span class="focus-title">Фокус · {{ focusTitle(f.kind) }}</span>
+          <span class="focus-time" aria-live="off">{{ focusLeft() }}</span>
+        </div>
+        <div class="bar" aria-hidden="true">
+          <span class="bar-fill" [style.width.%]="focusPercent()"></span>
+        </div>
+        <div class="confirm-row">
+          <button type="button" class="btn-primary" (click)="finishFocus()">Завершити</button>
+          <button type="button" class="setting" (click)="cancelFocus()">Скасувати</button>
+        </div>
+      } @else {
+        <div class="focus-head">
+          <span class="focus-title">Фокус-таймер</span>
+          <span class="muted small">сьогодні {{ game.focusToday() }} хв</span>
+        </div>
+        <div class="chips" role="group" aria-label="Чим займаєшся">
+          @for (k of focusKinds; track k.id) {
+            <button
+              type="button"
+              class="chip"
+              [class.on]="focusKind() === k.id"
+              [attr.aria-pressed]="focusKind() === k.id"
+              (click)="focusKind.set(k.id)"
+            >
+              {{ k.title }}
+            </button>
+          }
+        </div>
+        <div class="chips two" role="group" aria-label="Тривалість">
+          @for (m of focusPresets; track m) {
+            <button
+              type="button"
+              class="chip"
+              [class.on]="focusMinutes() === m"
+              [attr.aria-pressed]="focusMinutes() === m"
+              (click)="focusMinutes.set(m)"
+            >
+              {{ m }} хв
+            </button>
+          }
+        </div>
+        <button type="button" class="btn-secondary" (click)="startFocus()">
+          Почати {{ focusMinutes() }} хв
+        </button>
+        <p class="small-note muted">
+          1 XP за хвилину. Кожні 25 хв на embedded — очко в дереві навичок.
+        </p>
+      }
+    </div>
     <div class="activity-grid" role="tabpanel" aria-label="Активності">
       @for (a of activities; track a.id) {
         <button

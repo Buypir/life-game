@@ -6,14 +6,28 @@
     @case ('todos') {
       <app-todos (openReminders)="go('reminders')" />
     }
+    @case ('shop') {
+      <app-shop />
+    }
+    @case ('progress') {
+      <app-progress />
+    }
     @case ('reminders') {
+      <button type="button" class="link-btn back-btn" (click)="go('hero')">← Герой</button>
       <app-reminders />
     }
     @case ('hero') {
-      <app-hero />
+      <app-hero (openReminders)="go('reminders')" />
     }
   }
 </main>
+
+@if (award(); as text) {
+  <div class="award" role="status">
+    <span class="award-star" aria-hidden="true">★</span>
+    <span>{{ text }}</span>
+  </div>
+}
 
 @if (notice(); as text) {
   <div class="toast" role="status">
@@ -59,20 +73,32 @@
   <button
     type="button"
     class="nav-item"
-    [class.active]="screen() === 'reminders'"
-    [attr.aria-current]="screen() === 'reminders' ? 'page' : null"
-    (click)="go('reminders')"
+    [class.active]="screen() === 'shop'"
+    [attr.aria-current]="screen() === 'shop' ? 'page' : null"
+    (click)="go('shop')"
   >
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="icon">
-      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
-      <path d="M10 20.5h4" />
+      <path d="M5 8h14l-1.2 11.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z" />
+      <path d="M9 10V7a3 3 0 0 1 6 0v3" />
     </svg>
-    Нагадування
+    Магазин
   </button>
   <button
     type="button"
     class="nav-item"
-    [class.active]="screen() === 'hero'"
+    [class.active]="screen() === 'progress'"
+    [attr.aria-current]="screen() === 'progress' ? 'page' : null"
+    (click)="go('progress')"
+  >
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="icon">
+      <path d="M5 20V11M12 20V5M19 20v-6" />
+    </svg>
+    Прогрес
+  </button>
+  <button
+    type="button"
+    class="nav-item"
+    [class.active]="screen() === 'hero' || screen() === 'reminders'"
     [attr.aria-current]="screen() === 'hero' ? 'page' : null"
     (click)="go('hero')"
   >

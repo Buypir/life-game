@@ -1,0 +1,147 @@
+<header class="top">
+  <div class="top-text">
+    <span class="top-date">Рівень {{ game.level().level }} · {{ game.xp() }} XP усього</span>
+    <h1 class="top-title">Прогрес</h1>
+  </div>
+</header>
+
+@let b = game.boss();
+<section class="panel boss-card" [class.done]="b.done">
+  <div class="boss-head">
+    <span class="boss-badge">Бос тижня</span>
+    <span class="muted small">
+      {{
+        b.claimed
+          ? 'переможено'
+          : bossDaysLeft() === 1
+            ? 'останній день'
+            : 'ще ' + bossDaysLeft() + ' дн.'
+      }}
+    </span>
+  </div>
+  <h2 class="boss-title">{{ b.title }}</h2>
+  <p class="boss-goal">{{ b.value }} / {{ b.target }} {{ b.goal }}</p>
+  <div
+    class="bar"
+    role="progressbar"
+    [attr.aria-label]="b.title"
+    aria-valuemin="0"
+    [attr.aria-valuenow]="b.value"
+    [attr.aria-valuemax]="b.target"
+  >
+    <span class="bar-fill boss-fill" [style.width.%]="bossPercent()"></span>
+  </div>
+  <div class="boss-foot">
+    <span class="muted small">Нагорода: +{{ bossXp }} XP · +{{ bossCoins }} монет</span>
+    @if (b.claimed) {
+      <span class="ok-text small">Нагороду отримано</span>
+    } @else if (b.done) {
+      <button type="button" class="buy-btn confirm" (click)="claimBoss()">Забрати</button>
+    }
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="section-title">Активність</h2>
+  <div class="heatmap" aria-label="XP за останні 15 тижнів">
+    <div class="heat-labels" aria-hidden="true">
+      @for (l of weekdayLabels; track $index) {
+        <span>{{ l }}</span>
+      }
+    </div>
+    @for (week of heatmap(); track $index) {
+      <div class="heat-week">
+        @for (cell of week; track cell.key) {
+          <span
+            class="heat-cell"
+            [attr.data-level]="cell.level"
+            [attr.title]="dateLabel(cell.key) + ': ' + cell.value + ' XP'"
+          ></span>
+        }
+      </div>
+    }
+  </div>
+  <div class="xp-bars" aria-label="XP за останні 14 днів">
+    @for (d of bars(); track d.key) {
+      <div class="xp-bar" [class.weekend]="d.weekend" [attr.title]="d.value + ' XP'">
+        <span class="xp-bar-fill" [style.height.%]="d.height"></span>
+        <span class="xp-bar-label">{{ d.label }}</span>
+      </div>
+    }
+  </div>
+  <div class="stat-tiles">
+    @for (t of tiles(); track t.label) {
+      <div class="stat-tile">
+        <span class="stat-tile-value">{{ t.value }}</span>
+        <span class="stat-tile-label">{{ t.label }}</span>
+      </div>
+    }
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="section-title">
+    Досягнення
+    <span class="muted small">{{ unlockedCount() }} / {{ game.achievements().length }}</span>
+  </h2>
+  <div class="achievement-grid">
+    @for (a of game.achievements(); track a.id) {
+      <div class="achievement" [class.unlocked]="a.unlockedAt">
+        <span class="achievement-title">{{ a.title }}</span>
+        <span class="achievement-desc">{{ a.description }}</span>
+        @if (a.unlockedAt) {
+          <span class="ok-text small">{{ dateLabel(a.unlockedAt) }} · +{{ a.coins }}</span>
+        } @else {
+          <span class="bar small" aria-hidden="true">
+            <span class="bar-fill" [style.width.%]="(a.value / a.target) * 100"></span>
+          </span>
+          <span class="muted small">{{ a.value }} / {{ a.target }} · +{{ a.coins }} монет</span>
+        }
+      </div>
+    }
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="section-title">
+    Дерево embedded
+    <span class="muted small">очок: {{ game.skillPoints().free }}</span>
+  </h2>
+  <p class="small-note muted">
+    Очки дають сесії «Вчу embedded» і кожні 25 хв фокусу на embedded. Навичка: +40 XP за очко.
+  </p>
+  @if (skillMessage(); as msg) {
+    <p class="status-text" role="status">{{ msg }}</p>
+  }
+  <div class="skill-tree">
+    @for (tier of tiers(); track $index) {
+      <div class="skill-tier">
+        @for (s of tier; track s.id) {
+          <button
+            type="button"
+            class="skill"
+            [class.learned]="s.state === 'learned'"
+            [class.available]="s.state === 'available'"
+            [disabled]="s.state !== 'available'"
+            (click)="learn(s.id)"
+          >
+            <span class="skill-title">{{ s.title }}</span>
+            <span class="skill-meta">
+              @switch (s.state) {
+                @case ('learned') {
+                  вивчено
+                }
+                @case ('available') {
+                  вивчити · {{ s.cost }} оч.
+                }
+                @default {
+                  після: {{ requiresText(s.requires) }}
+                }
+              }
+            </span>
+          </button>
+        }
+      </div>
+    }
+  </div>
+</section>

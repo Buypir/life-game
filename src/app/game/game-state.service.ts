@@ -1,8 +1,10 @@
 import { computed, Injectable, InjectionToken, inject, signal } from '@angular/core';
 import {
+  addDays,
   bestStreak,
   currentStreak,
   dateKey,
+  dayQualifies,
   emptySave,
   isDateKey,
   isQuestDone,
@@ -13,6 +15,30 @@ import {
 } from './progress';
 import { findTask, Quest, QUEST_BONUS_XP, QUESTS } from './quests';
 import { cleanInput, newTodoId, Todo, TODO_XP, TodoInput } from './todos';
+import { coinBalance, findItem, MAX_FREEZES, Reward, shirtColor, slotOf } from './shop';
+import {
+  Achievement,
+  ACHIEVEMENTS,
+  BOSS_COINS,
+  BOSS_XP,
+  bossFor,
+  daysToFreeze,
+  FocusKind,
+  focusElapsed,
+  focusReward,
+  HEALTH_GOALS,
+  healthXp,
+  HealthInput,
+  mergeHealth,
+  MIN_FOCUS_MINUTES,
+  newAchievements,
+  SKILL_XP_PER_POINT,
+  SKILLS,
+  skillPoints,
+  skillState,
+  totals as computeTotals,
+  dailyXp,
+} from './progression';
 import { Activity, findActivity, LocationId, locationAfter, Place, PlaceId } from './activities';
 
 export const STORAGE_KEY = 'life-game:v1';
@@ -73,9 +99,13 @@ export class GameStateService {
   readonly sound = computed(() => this.save().sound);
   readonly level = computed(() => levelInfo(this.save().xp));
   readonly doneToday = computed(() => new Set(this.save().days[this.today()] ?? []));
-  readonly streak = computed(() => currentStreak(this.save().days, this.today(), QUESTS));
-  readonly bestStreak = computed(() => bestStreak(this.save().days, QUESTS));
-  readonly week = computed(() => recentDays(this.save().days, this.today(), QUESTS, 7));
+  readonly streak = computed(() =>
+    currentStreak(this.save().days, this.today(), QUESTS, this.save().frozen),
+  );
+  readonly bestStreak = computed(() => bestStreak(this.save().days, QUESTS, this.save().frozen));
+  readonly week = computed(() =>
+    recentDays(this.save().days, this.today(), QUESTS, 7, this.save().frozen),
+  );
   /** Герой спить, поки за день нічого не зроблено, і після «Лягти спати». */
   readonly asleep = computed(() => {
     const done = this.doneToday();
@@ -87,10 +117,35 @@ export class GameStateService {
   readonly wentToBed = computed(() => this.doneToday().has('sleep'));
   readonly breakfastDone = computed(() => this.doneToday().has('breakfast'));
 
-  /** Перевіряє, чи не настав новий день. */
+  constructor() {
+    // досягнення, які вже виконано до оновлення гри, зараховуємо одразу
+    if (newAchievements(this.save(), this.bestStreak()).length) this.commit(this.save());
+  }
+
+  /** Перевіряє, чи не настав новий день; заодно рятує серію заморозкою. */
   refreshDay(): void {
     const key = dateKey(this.clock());
     if (key !== this.today()) this.today.set(key);
+    this.applyFreezes();
+  }
+
+  /** Пропущені дні прикриваються заморозками (якщо вони є і перед пропуском була серія). */
+  applyFreezes(): string[] {
+    const current = this.save();
+    const days = daysToFreeze(current, this.today());
+    if (days.length === 0) return [];
+    this.commit({
+      ...current,
+      freezes: current.freezes - days.length,
+      frozen: [...current.frozen, ...days].slice(-400),
+    });
+    this.notices.update((list) => [
+      ...list,
+      days.length === 1
+        ? 'Заморозка врятувала серію за вчора'
+        : `Заморозки врятували серію (${days.length} дні)`,
+    ]);
+    return days;
   }
 
   questProgress(quest: Quest): { done: number; total: number; complete: boolean } {
@@ -99,11 +154,12 @@ export class GameStateService {
     return { done: count, total: quest.tasks.length, complete: count === quest.tasks.length };
   }
 
-  complete(taskId: string): CompleteResult | null {
+  /** day — для дій із Siri, які застосунок забрав пізніше (за замовчуванням сьогодні). */
+  complete(taskId: string, day?: string): CompleteResult | null {
     const found = findTask(taskId);
     if (!found) return null;
     const { task, quest } = found;
-    const today = this.today();
+    const today = day && isDateKey(day) ? day : this.today();
     const current = this.save();
     const doneIds = current.days[today] ?? [];
     if (doneIds.includes(taskId)) return null;
@@ -165,8 +221,8 @@ export class GameStateService {
 
   /** Скидає досвід і квести; звуки й список справ лишаються. */
   reset(): void {
-    const { sound, todos, places, tracking } = this.save();
-    this.commit({ ...emptySave(), sound, todos, places, tracking });
+    const { sound, todos, places, tracking, name, rewards } = this.save();
+    this.commit({ ...emptySave(), sound, todos, places, tracking, name, rewards });
   }
 
   // ---------- активності й місця ----------
@@ -239,6 +295,263 @@ export class GameStateService {
     this.commit({ ...this.save(), tracking: on });
   }
 
+  // ---------- монети й магазин ----------
+
+  readonly name = computed(() => this.save().name);
+  readonly coins = computed(() => {
+    const s = this.save();
+    return coinBalance(s.xp, s.coinBonus, s.spent);
+  });
+  readonly owned = computed(() => new Set(this.save().owned));
+  readonly equipped = computed(() => this.save().equipped);
+  readonly rewards = computed(() => this.save().rewards);
+  readonly redeemed = computed(() => this.save().redeemed);
+  readonly freezes = computed(() => this.save().freezes);
+  /** Зовнішність героя для сцени й аватара. */
+  readonly look = computed(() => {
+    const e = this.save().equipped;
+    return { shirt: shirtColor(e), hat: e.hat, face: e.face };
+  });
+  /** Куплені речі для кімнати. */
+  readonly roomItems = computed(() =>
+    this.save().owned.filter((id) => findItem(id)?.category === 'room'),
+  );
+  /** Повідомлення для тосту (досягнення, заморозки). Екран забирає їх через takeNotices(). */
+  readonly notices = signal<string[]>([]);
+
+  takeNotices(): string[] {
+    const list = this.notices();
+    if (list.length) this.notices.set([]);
+    return list;
+  }
+
+  setName(name: string): void {
+    const clean = name.trim().slice(0, 24);
+    if (clean) this.commit({ ...this.save(), name: clean });
+  }
+
+  /** Купівля. Повертає текст помилки або null. */
+  buy(itemId: string): string | null {
+    const item = findItem(itemId);
+    if (!item) return 'Такої речі немає.';
+    const current = this.save();
+    if (item.category === 'bonus') {
+      if (current.freezes >= MAX_FREEZES)
+        return `Можна тримати не більше ${MAX_FREEZES} заморозок.`;
+    } else if (current.owned.includes(itemId) || item.price === 0) {
+      return 'Уже куплено.';
+    }
+    if (this.coins() < item.price) return 'Не вистачає монет.';
+    const next: SaveData = { ...current, spent: current.spent + item.price };
+    if (item.category === 'bonus') next.freezes = current.freezes + 1;
+    else next.owned = [...current.owned, itemId];
+    const slot = slotOf(item);
+    if (slot) next.equipped = { ...current.equipped, [slot]: itemId };
+    this.commit(next);
+    return null;
+  }
+
+  /** Вдягнути або зняти річ. Футболку не знімаємо — повертаємо базову. */
+  toggleEquip(itemId: string): void {
+    const item = findItem(itemId);
+    const slot = item && slotOf(item);
+    const current = this.save();
+    if (!item || !slot || (!current.owned.includes(itemId) && item.price > 0)) return;
+    const on = current.equipped[slot] === itemId;
+    const value = on ? (slot === 'shirt' ? 'shirt-blue' : null) : itemId;
+    this.commit({ ...current, equipped: { ...current.equipped, [slot]: value } });
+  }
+
+  addReward(title: string, price: number): boolean {
+    const clean = title.trim().slice(0, 60);
+    const cost = Math.floor(price);
+    if (!clean || !Number.isFinite(cost) || cost < 1 || cost > 100_000) return false;
+    const current = this.save();
+    const reward: Reward = { id: `r-${newTodoId()}`, title: clean, price: cost };
+    this.commit({ ...current, rewards: [...current.rewards, reward].slice(0, 30) });
+    return true;
+  }
+
+  removeReward(id: string): void {
+    const current = this.save();
+    this.commit({ ...current, rewards: current.rewards.filter((r) => r.id !== id) });
+  }
+
+  /** Обміняти монети на нагороду з реального життя. */
+  redeem(id: string): string | null {
+    const current = this.save();
+    const reward = current.rewards.find((r) => r.id === id);
+    if (!reward) return 'Нагороду не знайдено.';
+    if (this.coins() < reward.price) return 'Не вистачає монет.';
+    this.commit({
+      ...current,
+      spent: current.spent + reward.price,
+      redeemed: [
+        ...current.redeemed,
+        { rewardId: id, title: reward.title, price: reward.price, at: this.clock().toISOString() },
+      ].slice(-50),
+    });
+    return null;
+  }
+
+  // ---------- досягнення, бос, навички ----------
+
+  readonly totals = computed(() => computeTotals(this.save()));
+  readonly xpByDay = computed(() => dailyXp(this.save()));
+
+  readonly achievements = computed(() => {
+    const s = this.save();
+    const t = this.totals();
+    const best = this.bestStreak();
+    return ACHIEVEMENTS.map((a) => {
+      const [value, target] = a.progress(s, t, best);
+      return {
+        ...a,
+        value: Math.min(value, target),
+        target,
+        unlockedAt: s.achievements[a.id] ?? null,
+      };
+    });
+  });
+
+  readonly boss = computed(() => {
+    const { boss, week, days } = bossFor(this.today());
+    const value = boss.count(this.save(), days);
+    return {
+      ...boss,
+      week,
+      value: Math.min(value, boss.target),
+      done: value >= boss.target,
+      claimed: this.save().bosses.includes(week),
+    };
+  });
+
+  claimBoss(): boolean {
+    const boss = this.boss();
+    if (!boss.done || boss.claimed) return false;
+    const current = this.save();
+    this.commit({
+      ...current,
+      xp: current.xp + BOSS_XP,
+      coinBonus: current.coinBonus + BOSS_COINS,
+      stats: { ...current.stats, discipline: current.stats.discipline + 1 },
+      bosses: [...current.bosses, boss.week].slice(-200),
+    });
+    return true;
+  }
+
+  readonly skills = computed(() => {
+    const learned = this.save().skills;
+    return SKILLS.map((node) => ({ ...node, state: skillState(node, learned) }));
+  });
+  readonly skillPoints = computed(() => skillPoints(this.save()));
+
+  learnSkill(id: string): string | null {
+    const node = SKILLS.find((s) => s.id === id);
+    const current = this.save();
+    if (!node) return 'Невідома навичка.';
+    const state = skillState(node, current.skills);
+    if (state === 'learned') return 'Уже вивчено.';
+    if (state === 'locked') return 'Спершу вивчи попередні навички.';
+    if (this.skillPoints().free < node.cost) return 'Не вистачає очок: займайся embedded.';
+    this.commit({
+      ...current,
+      skills: [...current.skills, id],
+      xp: current.xp + node.cost * SKILL_XP_PER_POINT,
+      stats: { ...current.stats, intellect: current.stats.intellect + node.cost },
+    });
+    return null;
+  }
+
+  /** Учора нічого не зроблено (і не врятовано заморозкою) — у кімнаті безлад, поки не виконаєш квест. */
+  readonly messy = computed(() => {
+    const s = this.save();
+    const yesterday = addDays(this.today(), -1);
+    const hasHistory = Object.keys(s.days).some((d) => d < yesterday);
+    if (!hasHistory || s.frozen.includes(yesterday)) return false;
+    if (dayQualifies(s.days[yesterday], QUESTS)) return false;
+    return !dayQualifies(s.days[this.today()], QUESTS);
+  });
+
+  // ---------- фокус-таймер ----------
+
+  readonly focus = computed(() => this.save().focus);
+  readonly focusToday = computed(() =>
+    (this.save().focusLog[this.today()] ?? []).reduce((a, e) => a + e.minutes, 0),
+  );
+
+  startFocus(kind: FocusKind, minutes: number): void {
+    if (this.save().focus) return;
+    this.commit({
+      ...this.save(),
+      focus: {
+        kind,
+        minutes: Math.min(180, Math.max(1, Math.round(minutes))),
+        start: this.clock().toISOString(),
+      },
+    });
+  }
+
+  cancelFocus(): void {
+    if (this.save().focus) this.commit({ ...this.save(), focus: null });
+  }
+
+  /**
+   * Завершує фокус: зараховує час, що минув (не більше запланованого).
+   * Повертає нагороду або null, якщо пройшло менше MIN_FOCUS_MINUTES.
+   */
+  finishFocus(): { minutes: number; xpGained: number; leveledUp: boolean; level: number } | null {
+    const current = this.save();
+    const session = current.focus;
+    if (!session) return null;
+    const minutes = Math.min(session.minutes, Math.floor(focusElapsed(session, this.clock())));
+    if (minutes < MIN_FOCUS_MINUTES) {
+      this.commit({ ...current, focus: null });
+      return null;
+    }
+    const entry = { kind: session.kind, minutes };
+    const reward = focusReward(entry);
+    const day = dateKey(new Date(session.start));
+    const before = levelInfo(current.xp).level;
+    const next: SaveData = {
+      ...current,
+      focus: null,
+      xp: current.xp + reward.xp,
+      stats: { ...current.stats, [reward.stat]: current.stats[reward.stat] + reward.points },
+      focusLog: { ...current.focusLog, [day]: [...(current.focusLog[day] ?? []), entry] },
+    };
+    this.commit(next);
+    const level = levelInfo(next.xp).level;
+    return { minutes, xpGained: reward.xp, leveledUp: level > before, level };
+  }
+
+  // ---------- Apple Health ----------
+
+  readonly healthToday = computed(() => this.save().health[this.today()] ?? null);
+
+  /** Показники з «Команд». Повертає нараховані XP. */
+  applyHealth(input: HealthInput, day?: string): number {
+    const key = day && isDateKey(day) ? day : this.today();
+    const current = this.save();
+    const before = current.health[key];
+    const merged = mergeHealth(before, input);
+    const reachedBefore = new Set(
+      HEALTH_GOALS.filter((g) => before && g.reached(before)).map((g) => g.id),
+    );
+    const gained = HEALTH_GOALS.filter((g) => g.reached(merged) && !reachedBefore.has(g.id));
+    const total = healthXp(merged);
+    const xpGained = Math.max(0, total - merged.xp);
+    const stats = { ...current.stats };
+    for (const goal of gained) stats[goal.stat] += 1;
+    this.commit({
+      ...current,
+      xp: current.xp + xpGained,
+      stats,
+      health: { ...current.health, [key]: { ...merged, xp: Math.max(merged.xp, total) } },
+    });
+    return xpGained;
+  }
+
   // ---------- список справ ----------
 
   readonly todos = computed(() => this.save().todos);
@@ -298,7 +611,12 @@ export class GameStateService {
 
   clearDoneTodos(): void {
     const current = this.save();
-    this.commit({ ...current, todos: current.todos.filter((t) => !t.done) });
+    const done = current.todos.filter((t) => t.done).length;
+    this.commit({
+      ...current,
+      todos: current.todos.filter((t) => !t.done),
+      todosArchived: current.todosArchived + done,
+    });
   }
 
   /** Резервна копія прогресу у вигляді JSON. */
@@ -328,8 +646,30 @@ export class GameStateService {
     ) {
       return 'Це не резервна копія «Гри про життя».';
     }
-    this.commit(parseSave(JSON.stringify(candidate)));
+    this.commit(parseSave(JSON.stringify(candidate)), true);
     return null;
+  }
+
+  /** Записує нові досягнення й нараховує за них монети. */
+  private withAchievements(save: SaveData, quiet: boolean): SaveData {
+    const best = bestStreak(save.days, QUESTS, save.frozen);
+    const fresh: Achievement[] = newAchievements(save, best);
+    if (fresh.length === 0) return save;
+    const today = this.today();
+    if (!quiet) {
+      this.notices.update((list) => [
+        ...list,
+        ...fresh.map((a) => `Досягнення «${a.title}» · +${a.coins} монет`),
+      ]);
+    }
+    return {
+      ...save,
+      coinBonus: save.coinBonus + fresh.reduce((a, x) => a + x.coins, 0),
+      achievements: {
+        ...save.achievements,
+        ...Object.fromEntries(fresh.map((a) => [a.id, today])),
+      },
+    };
   }
 
   private load(): SaveData {
@@ -340,7 +680,8 @@ export class GameStateService {
     }
   }
 
-  private commit(next: SaveData): void {
+  private commit(input: SaveData, quiet = false): void {
+    const next = this.withAchievements(input, quiet);
     this.save.set(next);
     try {
       this.storage.setItem(STORAGE_KEY, JSON.stringify(next));

@@ -12,17 +12,26 @@ import { GameStateService } from './game/game-state.service';
 import { arrivalText, TravelService } from './game/travel.service';
 import { RemindersService } from './reminders/reminders.service';
 import { HeroComponent } from './screens/hero.component';
+import { ProgressComponent } from './screens/progress.component';
+import { ShopComponent } from './screens/shop.component';
 import { RemindersComponent } from './screens/reminders.component';
 import { TodosComponent } from './screens/todos.component';
 import { TodayComponent } from './screens/today.component';
 
-type Screen = 'today' | 'todos' | 'reminders' | 'hero';
-const SCREENS: Screen[] = ['today', 'todos', 'reminders', 'hero'];
+type Screen = 'today' | 'todos' | 'shop' | 'progress' | 'hero' | 'reminders';
+const SCREENS: Screen[] = ['today', 'todos', 'shop', 'progress', 'hero', 'reminders'];
 
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TodayComponent, TodosComponent, RemindersComponent, HeroComponent],
+  imports: [
+    TodayComponent,
+    TodosComponent,
+    ShopComponent,
+    ProgressComponent,
+    RemindersComponent,
+    HeroComponent,
+  ],
   templateUrl: './app.html',
 })
 export class App {
@@ -34,6 +43,10 @@ export class App {
   /** Повідомлення про поїздку, коли користувач не на екрані «Сьогодні» (там її показує сцена). */
   protected readonly notice = signal<string | null>(null);
   private noticeTimer?: ReturnType<typeof setTimeout>;
+  /** Досягнення й заморозки — зверху екрана, по черзі. */
+  protected readonly award = signal<string | null>(null);
+  private readonly awardQueue: string[] = [];
+  private awardTimer?: ReturnType<typeof setTimeout>;
 
   /** Скільки справ на сьогодні (і прострочених) ще не виконано — для значка в меню. */
   protected readonly todosBadge = computed(() => {
@@ -45,6 +58,7 @@ export class App {
     // новий день починається опівночі, навіть якщо застосунок не закривали
     const refresh = () => this.game.refreshDay();
     const timer = setInterval(refresh, 60_000);
+    refresh();
 
     // поїздки: черга з сервера + GPS — при відкритті, поверненні й раз на 3 хв, поки застосунок на екрані
     const travel = () => {
@@ -68,6 +82,25 @@ export class App {
       document.removeEventListener('visibilitychange', onVisible);
     });
 
+    effect(() => {
+      if (this.game.notices().length === 0) return;
+      untracked(() => {
+        const fresh = this.game.takeNotices();
+        const awards = fresh.filter((n) => n.startsWith('Досягнення'));
+        // після оновлення гри може відкритися багато досягнень разом — показуємо одним повідомленням
+        if (awards.length > 2) {
+          const coins = awards.reduce((a, n) => a + Number(n.match(/\+(\d+)/)?.[1] ?? 0), 0);
+          this.awardQueue.push(
+            ...fresh.filter((n) => !n.startsWith('Досягнення')),
+            `Нові досягнення: ${awards.length} · +${coins} монет`,
+          );
+        } else {
+          this.awardQueue.push(...fresh);
+        }
+        if (!this.award()) this.nextAward();
+      });
+    });
+
     let seen = 0;
     effect(() => {
       const event = this.travel.lastArrival();
@@ -78,6 +111,13 @@ export class App {
       clearTimeout(this.noticeTimer);
       this.noticeTimer = setTimeout(() => this.notice.set(null), 5000);
     });
+  }
+
+  private nextAward(): void {
+    const text = this.awardQueue.shift() ?? null;
+    this.award.set(text);
+    clearTimeout(this.awardTimer);
+    if (text) this.awardTimer = setTimeout(() => this.nextAward(), 3500);
   }
 
   protected go(screen: Screen): void {

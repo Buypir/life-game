@@ -323,7 +323,7 @@ export interface FlatPose {
   /** Зсув усього героя вгору (стрибок). */
   lift?: number;
   eyes?: 'open' | 'closed';
-  mouth?: 'smile' | 'open' | 'none';
+  mouth?: 'smile' | 'open' | 'none' | 'sad';
   /** Нахил голови вниз (читання). */
   headDown?: number;
   props?: Prop[];
@@ -337,6 +337,9 @@ export interface Look {
   pants: string;
   hair: string;
   long: boolean;
+  /** Головний убір і окуляри з магазину (id речі). */
+  hat?: string | null;
+  face?: string | null;
 }
 
 export const HERO_LOOK: Look = { shirt: C.accent, pants: '#2A2F45', hair: C.ink, long: false };
@@ -374,10 +377,12 @@ function ik(shoulder: Vec, target: Vec, outward: number): Vec {
 
 interface HeadOptions {
   eyes: 'open' | 'closed';
-  mouth: 'smile' | 'open' | 'none';
+  mouth: 'smile' | 'open' | 'none' | 'sad';
   rotate?: number;
   hair?: string;
   long?: boolean;
+  hat?: string | null;
+  face?: string | null;
 }
 
 function drawHead(ctx: Ctx, c: Vec, r: number, o: HeadOptions): void {
@@ -416,8 +421,87 @@ function drawHead(ctx: Ctx, c: Vec, r: number, o: HeadOptions): void {
     ctx.strokeStyle = C.ink;
     ctx.lineWidth = 1.3;
     ctx.stroke();
+  } else if (o.mouth === 'sad') {
+    ctx.beginPath();
+    ctx.arc(0, r * 0.72, 3, 1.2 * Math.PI, 1.8 * Math.PI);
+    ctx.strokeStyle = C.ink;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
   }
+  if (o.face) drawFace(ctx, r, ey, o.face);
+  if (o.hat) drawHat(ctx, r, o.hat);
   ctx.restore();
+}
+
+/** Окуляри в локальних координатах голови. */
+function drawFace(ctx: Ctx, r: number, ey: number, face: string): void {
+  const dx = r * 0.36;
+  if (face === 'face-sun') {
+    rrect(ctx, -dx - 4, ey - 2.6, 7.5, 5.2, 2.2, '#1B1E27');
+    rrect(ctx, dx - 3.5, ey - 2.6, 7.5, 5.2, 2.2, '#1B1E27');
+    capsule(ctx, { x: -dx + 3, y: ey - 1 }, { x: dx - 3, y: ey - 1 }, 1.1, '#1B1E27');
+    return;
+  }
+  ctx.strokeStyle = C.ink;
+  ctx.lineWidth = 1.1;
+  for (const x of [-dx, dx]) {
+    ctx.beginPath();
+    ctx.arc(x, ey, 3.4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(-dx + 3.4, ey - 0.6);
+  ctx.lineTo(dx - 3.4, ey - 0.6);
+  ctx.stroke();
+}
+
+/** Головні убори поверх волосся. */
+function drawHat(ctx: Ctx, r: number, hat: string): void {
+  switch (hat) {
+    case 'hat-cap':
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.18, r + 0.6, Math.PI, 0);
+      ctx.closePath();
+      ctx.fillStyle = '#F97316';
+      ctx.fill();
+      rrect(ctx, -r - 1, -r * 0.3, r * 2 + 8, 3.4, 1.7, '#C2410C');
+      circle(ctx, 0, -r - 0.6, 1.6, '#C2410C');
+      break;
+    case 'hat-beanie':
+      rrect(ctx, -r - 0.8, -r - 2.5, r * 2 + 1.6, r * 0.95, [r, r, 2, 2], '#14B8A6');
+      rrect(ctx, -r - 1.4, -r * 0.42 - 1.5, r * 2 + 2.8, 4.2, 2, '#0F8F82');
+      circle(ctx, 0, -r - 3.2, 3, '#0F8F82');
+      break;
+    case 'hat-headphones':
+      ctx.beginPath();
+      ctx.arc(0, -1, r + 2, Math.PI * 1.08, Math.PI * 1.92);
+      ctx.strokeStyle = '#22252F';
+      ctx.lineWidth = 2.6;
+      ctx.stroke();
+      rrect(ctx, -r - 4, -4, 5.5, 10, 2.5, '#22252F');
+      rrect(ctx, r - 1.5, -4, 5.5, 10, 2.5, '#22252F');
+      rrect(ctx, -r - 3, -2.5, 2, 7, 1, C.accent);
+      rrect(ctx, r + 2, -2.5, 2, 7, 1, C.accent);
+      break;
+    case 'hat-crown': {
+      const y = -r + 1;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.75, y);
+      ctx.lineTo(-r * 0.85, y - 9);
+      ctx.lineTo(-r * 0.4, y - 4.5);
+      ctx.lineTo(0, y - 11);
+      ctx.lineTo(r * 0.4, y - 4.5);
+      ctx.lineTo(r * 0.85, y - 9);
+      ctx.lineTo(r * 0.75, y);
+      ctx.closePath();
+      ctx.fillStyle = '#F5B700';
+      ctx.fill();
+      circle(ctx, 0, y - 4, 1.6, '#E5484D');
+      circle(ctx, -r * 0.5, y - 2.5, 1.2, C.accent);
+      circle(ctx, r * 0.5, y - 2.5, 1.2, C.accent);
+      break;
+    }
+  }
 }
 
 /** Малює героя: x — центр, groundY — лінія стоп. */
@@ -453,6 +537,8 @@ export function drawHero(
     mouth: pose.mouth ?? 'smile',
     hair: look.hair,
     long: look.long,
+    hat: look.hat,
+    face: look.face,
   });
 
   // руки
@@ -533,12 +619,24 @@ function drawProp(ctx: Ctx, prop: Prop, head: Vec, handL: Vec, handR: Vec): void
 }
 
 /** Аватарка: лише голова в колі. */
-export function drawAvatar(ctx: Ctx, size: number): void {
+export function drawAvatar(ctx: Ctx, size: number, look: Partial<Look> = {}): void {
   ctx.clearRect(0, 0, size, size);
   ctx.save();
   ctx.scale(size / 40, size / 40);
   circle(ctx, 20, 20, 20, C.wall);
-  rrect(ctx, 6, 30, 28, 20, 12, C.accent);
-  drawHead(ctx, { x: 20, y: 19 }, 11, { eyes: 'open', mouth: 'smile' });
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(20, 20, 20, 0, Math.PI * 2);
+  ctx.clip();
+  rrect(ctx, 6, 30, 28, 20, 12, look.shirt ?? C.accent);
+  ctx.restore();
+  drawHead(ctx, { x: 20, y: 20 }, 11, {
+    eyes: 'open',
+    mouth: 'smile',
+    hair: look.hair,
+    long: look.long,
+    hat: look.hat,
+    face: look.face,
+  });
   ctx.restore();
 }

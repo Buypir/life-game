@@ -1,9 +1,25 @@
 <section class="panel hero-card">
   <div class="hero-portrait">
-    <app-hero-sprite variant="full" />
+    <app-hero-sprite variant="full" [look]="game.look()" />
   </div>
   <div class="hero-info">
-    <h1 class="hero-name">Герой</h1>
+    @if (editingName()) {
+      <form class="name-form" (submit)="$event.preventDefault(); saveName(nameInput.value)">
+        <input
+          #nameInput
+          class="text-input"
+          maxlength="24"
+          aria-label="Ім'я героя"
+          [value]="game.name()"
+        />
+        <button type="submit" class="link-btn">OK</button>
+      </form>
+    } @else {
+      <button type="button" class="hero-name name-btn" (click)="editingName.set(true)">
+        {{ game.name() }} <span class="muted small" aria-hidden="true">✎</span>
+        <span class="sr-only">— змінити ім'я</span>
+      </button>
+    }
     <p class="hero-level">Рівень {{ game.level().level }}</p>
     <div
       class="bar"
@@ -163,6 +179,10 @@
 
 <section class="panel settings">
   <h2 class="section-title">Налаштування</h2>
+  <button type="button" class="setting" (click)="openReminders.emit()">
+    <span>Нагадування й будильник</span>
+    <span class="muted" aria-hidden="true">›</span>
+  </button>
   <button type="button" class="setting" [attr.aria-pressed]="game.sound()" (click)="toggleSound()">
     <span>Звуки</span>
     <span class="switch" [class.on]="game.sound()" aria-hidden="true"

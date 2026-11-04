@@ -13,6 +13,8 @@ import {
   drawSparkles,
   drawWater,
   FlatPose,
+  HERO_LOOK,
+  Look,
   FLOOR_Y,
   GIRL_LOOK,
   SCENE_H,
@@ -21,6 +23,7 @@ import {
   STAND,
   timeOfDay,
 } from './flat';
+import { drawCat, drawMess, drawRoomItems } from './room-items';
 import {
   drawCafe,
   drawCafeTable,
@@ -81,7 +84,11 @@ type Mode = 'sleep' | 'idle' | 'walk' | 'act';
 export interface SceneFlags {
   /** Чи сніданок уже з'їдено сьогодні — тоді на столі лишається тарілка. */
   breakfastDone: boolean;
+  /** Учора пропущено день — у кімнаті безлад, герой сумний. */
+  messy?: boolean;
 }
+
+export type FocusScene = 'embedded' | 'study' | 'work';
 
 /**
  * Невеликий ігровий рушій: тримає стан героя, рухає його між локаціями
@@ -108,6 +115,9 @@ export class SceneEngine {
   /** Час, що минув у русі (для прокручування фону дороги й парку). */
   private scroll = 0;
   private flags: SceneFlags = { breakfastDone: false };
+  private look: Look = HERO_LOOK;
+  private room: string[] = [];
+  private focus: FocusScene | null = null;
 
   private raf = 0;
   private lastFrame = 0;
@@ -171,6 +181,29 @@ export class SceneEngine {
 
   setFlags(flags: Partial<SceneFlags>): void {
     this.flags = { ...this.flags, ...flags };
+  }
+
+  /** Одяг героя й куплені речі для кімнати. */
+  setStyle(look: Partial<Look>, room: readonly string[]): void {
+    this.look = { ...HERO_LOOK, ...look };
+    if (room.join() !== this.room.join()) {
+      this.room = [...room];
+      this.bgStamp = '';
+    }
+  }
+
+  /** Фокус-таймер: герой сидить за столом, поки йде таймер. */
+  setFocus(focus: FocusScene | null): void {
+    if (focus === this.focus) return;
+    this.focus = focus;
+    if (!focus || this.busy) return;
+    if (this.loc !== 'home') this.switchTo('home', true);
+    if (this.mode === 'sleep') this.mode = 'idle';
+    this.heroX = SPOT_X.desk;
+  }
+
+  private get focusActive(): boolean {
+    return this.focus !== null && this.mode === 'idle' && this.loc === 'home';
   }
 
   /** Щоденна справа вдома: герой іде до потрібного місця, виконує її й повертається в очікування. */
@@ -334,7 +367,7 @@ export class SceneEngine {
   /** Нерухомі фони кешуються в окремому полотні й оновлюються раз на хвилину. */
   private drawStaticBackground(scale: number): void {
     const now = this.clock();
-    const stamp = `${this.loc}:${now.getHours()}:${now.getMinutes()}:${this.bg.width}`;
+    const stamp = `${this.loc}:${now.getHours()}:${now.getMinutes()}:${this.bg.width}:${this.room.join()}`;
     if (stamp !== this.bgStamp) {
       this.bgStamp = stamp;
       const bctx = this.bg.getContext('2d');
@@ -343,7 +376,10 @@ export class SceneEngine {
         if (this.loc === 'office') drawOffice(bctx, now);
         else if (this.loc === 'gym') drawGym(bctx);
         else if (this.loc === 'cafe') drawCafe(bctx, now);
-        else drawRoom(bctx, now);
+        else {
+          drawRoom(bctx, now);
+          drawRoomItems(bctx, this.room, timeOfDay(now.getHours()) === 'night');
+        }
       }
     }
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -377,11 +413,11 @@ export class SceneEngine {
         if (this.activity === 'date-dinner') drawHearts(ctx, 160, 92, now);
         break;
       case 'office':
-        drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
+        drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed), this.look);
         drawOfficeDesk(ctx, this.activity === 'type', now);
         break;
       case 'gym':
-        drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
+        drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed), this.look);
         break;
       default:
         this.renderHome(now, elapsed);
@@ -410,8 +446,12 @@ export class SceneEngine {
         elapsed < WAKE_IN_BED_MS) ||
       (this.mode === 'act' && this.action === 'sleep' && elapsed >= SLEEP_STAND_MS);
 
+    const cat = this.room.includes('room-cat');
+    if (this.flags.messy) drawMess(ctx);
+    if (this.focusActive) this.heroX = SPOT_X.desk;
     if (inBed) {
       drawSleepingHero(ctx, now);
+      if (cat) drawCat(ctx, now, true);
       if (this.mode === 'sleep' || this.action === 'sleep') {
         drawSnore(ctx, now);
       } else if (elapsed > WAKE_IN_BED_MS * 0.45) {
@@ -421,13 +461,15 @@ export class SceneEngine {
       }
     } else {
       drawMadeBed(ctx);
-      drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
+      if (cat) drawCat(ctx, now, false);
+      drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed), this.look);
     }
 
     drawDesk(ctx);
+    const focus = this.focusActive ? this.focus : null;
     const acting = this.mode === 'act' ? this.action : null;
-    const embedded = this.mode === 'act' && this.activity === 'embedded';
-    drawLaptop(ctx, acting === 'type' || embedded, now);
+    const embedded = (this.mode === 'act' && this.activity === 'embedded') || focus === 'embedded';
+    drawLaptop(ctx, acting === 'type' || embedded || focus === 'work', now);
     if (embedded) drawDevBoard(ctx, now, true);
     else if (acting === 'eat') drawPlate(ctx, true);
     else if (this.flags.breakfastDone) drawPlate(ctx, false);
@@ -472,7 +514,7 @@ export class SceneEngine {
     }
     girl.eyes = now % 4100 < 140 ? 'closed' : 'open';
     hero.eyes = now % 3600 < 140 ? 'closed' : 'open';
-    drawHero(this.ctx, this.heroX, FLOOR_Y, hero);
+    drawHero(this.ctx, this.heroX, FLOOR_Y, hero, this.look);
     drawHero(this.ctx, girlX, FLOOR_Y, girl, GIRL_LOOK);
   }
 
@@ -490,8 +532,19 @@ export class SceneEngine {
       };
     }
 
-    if (this.mode === 'act' && this.activity) {
-      switch (this.activity) {
+    const focus = this.focusActive ? this.focus : null;
+    const activity = this.mode === 'act' ? this.activity : focus === 'embedded' ? 'embedded' : null;
+    const action: ActionKind | null =
+      this.mode === 'act'
+        ? this.action
+        : focus === 'study'
+          ? 'study'
+          : focus === 'work'
+            ? 'type'
+            : null;
+
+    if (activity) {
+      switch (activity) {
         case 'embedded': {
           const tap = Math.floor(elapsed / 220) % 2;
           return {
@@ -527,8 +580,8 @@ export class SceneEngine {
       }
     }
 
-    if (this.mode === 'act' && this.action) {
-      switch (this.action) {
+    if (action) {
+      switch (action) {
         case 'wake': {
           const local = this.wakeFromBed ? elapsed - WAKE_IN_BED_MS : elapsed;
           const stretch = Math.max(0, Math.sin((local / 900) * Math.PI));
@@ -611,11 +664,12 @@ export class SceneEngine {
       }
     }
 
-    // очікування: дихає й моргає
+    // очікування: дихає й моргає (а після пропущеного дня — сумує)
     return {
       ...STAND,
       bob: (Math.sin(now / 700) + 1) * 0.6,
       eyes: now % 3600 < 140 ? 'closed' : 'open',
+      mouth: this.flags.messy ? 'sad' : 'smile',
     };
   }
 }

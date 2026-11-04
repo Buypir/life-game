@@ -15,6 +15,7 @@ import { Quest, Task } from '../game/quests';
 import { Activity, ACTIVITIES } from '../game/activities';
 import { SoundService } from '../game/sound.service';
 import { ArrivalEvent, arrivalText, TravelService } from '../game/travel.service';
+import { FOCUS_KINDS, FOCUS_PRESETS, FocusKind, focusElapsed } from '../game/progression';
 import { SceneComponent } from '../scene/scene.component';
 
 interface Popup {
@@ -64,7 +65,75 @@ export class TodayComponent {
   /** Приїзди, що сталися до відкриття екрана, не програємо повторно. */
   private seenArrival = this.travel.lastArrival()?.seq ?? 0;
 
+  // ---------- фокус-таймер ----------
+
+  protected readonly focusKinds = FOCUS_KINDS;
+  protected readonly focusPresets = FOCUS_PRESETS;
+  protected readonly focusKind = signal<FocusKind>('embedded');
+  protected readonly focusMinutes = signal(25);
+  /** Тікає щосекунди, поки йде фокус. */
+  private readonly tick = signal(Date.now());
+
+  protected readonly focusScene = computed(() => this.game.focus()?.kind ?? null);
+
+  protected readonly focusLeftMs = computed(() => {
+    this.tick();
+    const f = this.game.focus();
+    if (!f) return 0;
+    return Math.max(0, f.minutes * 60_000 - focusElapsed(f, new Date()) * 60_000);
+  });
+
+  protected readonly focusLeft = computed(() => {
+    const total = Math.ceil(this.focusLeftMs() / 1000);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  });
+
+  protected readonly focusPercent = computed(() => {
+    const f = this.game.focus();
+    return f ? Math.round(100 - (this.focusLeftMs() / (f.minutes * 60_000)) * 100) : 0;
+  });
+
+  protected focusTitle(kind: FocusKind): string {
+    return FOCUS_KINDS.find((k) => k.id === kind)?.title ?? kind;
+  }
+
+  protected startFocus(): void {
+    this.beep('tap');
+    this.game.startFocus(this.focusKind(), this.focusMinutes());
+    this.revealScene();
+  }
+
+  protected cancelFocus(): void {
+    this.game.cancelFocus();
+  }
+
+  protected finishFocus(): void {
+    const result = this.game.finishFocus();
+    if (!result) {
+      this.showToast('Менше 5 хвилин — не зараховано', 'OK', () => undefined);
+      return;
+    }
+    this.popXp(result.xpGained);
+    if (result.leveledUp) {
+      this.showBanner(`Новий рівень ${result.level}!`);
+      this.beep('level');
+    } else {
+      this.beep('complete');
+    }
+    this.showToast(`+${result.xpGained} XP · фокус ${result.minutes} хв`, 'OK', () => undefined);
+  }
+
   constructor() {
+    // таймер: оновлюємо відлік і самі завершуємо, коли час вийшов (і після повернення в гру)
+    effect((onCleanup) => {
+      if (!this.game.focus()) return;
+      const timer = setInterval(() => {
+        this.tick.set(Date.now());
+        if (this.focusLeftMs() <= 0) untracked(() => this.finishFocus());
+      }, 1000);
+      onCleanup(() => clearInterval(timer));
+    });
+
     effect(() => {
       const event = this.travel.lastArrival();
       if (!event || event.seq <= this.seenArrival) return;
@@ -128,6 +197,8 @@ export class TodayComponent {
   protected readonly caption = computed(() => {
     const active = this.activeTask() ?? this.activeActivity();
     if (active) return `${active.doing}…`;
+    const focus = this.game.focus();
+    if (focus) return `Фокус · ${this.focusTitle(focus.kind)} · ${this.focusLeft()}`;
     const lastActivity = this.lastActivity();
     if (lastActivity) return lastActivity.done;
     const last = this.lastDone();
@@ -135,6 +206,7 @@ export class TodayComponent {
     if (this.game.wentToBed()) return 'Герой спить. Добраніч!';
     if (this.game.asleep()) return 'Герой спить. Час прокидатись!';
     if (this.allDone()) return 'Усе зроблено — герой відпочиває';
+    if (this.game.messy()) return 'Учора день пропущено — безлад. Виконай квест, щоб прибрати';
     return 'Герой чекає на наступну справу';
   });
 

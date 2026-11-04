@@ -11,7 +11,8 @@ import {
 } from '@angular/core';
 import { Activity, LocationId } from '../game/activities';
 import { ActionKind, Spot } from '../game/quests';
-import { SceneEngine } from './scene-engine';
+import { Look } from './flat';
+import { FocusScene, SceneEngine } from './scene-engine';
 
 @Component({
   selector: 'app-scene',
@@ -34,6 +35,10 @@ export class SceneComponent {
   readonly breakfastDone = input(false);
   readonly location = input<LocationId>('home');
   readonly label = input('Кімната героя');
+  readonly look = input<Partial<Look>>({});
+  readonly room = input<readonly string[]>([]);
+  readonly messy = input(false);
+  readonly focus = input<FocusScene | null>(null);
 
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
   private engine: SceneEngine | null = null;
@@ -45,7 +50,9 @@ export class SceneComponent {
       this.engine = new SceneEngine(this.canvas().nativeElement);
       this.engine.setLocation(this.location());
       this.engine.setSleeping(this.sleeping());
-      this.engine.setFlags({ breakfastDone: this.breakfastDone() });
+      this.engine.setFlags({ breakfastDone: this.breakfastDone(), messy: this.messy() });
+      this.engine.setStyle(this.look(), this.room());
+      this.engine.setFocus(this.focus());
       this.engine.renderOnce();
       this.engine.start();
 
@@ -66,7 +73,14 @@ export class SceneComponent {
       const location = this.location();
       this.engine?.setLocation(location);
       this.engine?.setSleeping(sleeping);
-      this.engine?.setFlags({ breakfastDone });
+      // сигнали читаємо до ?. — інакше без рушія вони не відстежуються
+      const messy = this.messy();
+      const look = this.look();
+      const room = this.room();
+      const focus = this.focus();
+      this.engine?.setFlags({ breakfastDone, messy });
+      this.engine?.setStyle(look, room);
+      this.engine?.setFocus(focus);
     });
   }
 

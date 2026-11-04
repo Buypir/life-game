@@ -1,0 +1,149 @@
+<header class="top">
+  <div class="top-text">
+    <span class="top-date">1 монета = {{ xpPerCoin }} XP</span>
+    <h1 class="top-title">Магазин</h1>
+  </div>
+  <div class="coin-balance" [attr.aria-label]="'Монет: ' + game.coins()">
+    <span class="coin" aria-hidden="true"></span>
+    {{ game.coins() }}
+  </div>
+</header>
+
+<section class="panel shop-hero">
+  <app-hero-sprite variant="full" class="shop-hero-sprite" [look]="game.look()" />
+  <p class="small-note muted">
+    Монети дають справи, досягнення й бос тижня. Скасована справа забирає й свої монети.
+  </p>
+</section>
+
+<section class="panel">
+  <div class="tabs shop-tabs" role="tablist" aria-label="Розділи магазину">
+    @for (t of tabs; track t.id) {
+      <button
+        type="button"
+        role="tab"
+        class="tab"
+        [class.active]="tab() === t.id"
+        [attr.aria-selected]="tab() === t.id"
+        (click)="selectTab(t.id)"
+      >
+        {{ t.label }}
+      </button>
+    }
+  </div>
+
+  @if (message(); as m) {
+    <p class="status-text" [class.error-text]="m.error" [class.ok-text]="!m.error" role="status">
+      {{ m.text }}
+    </p>
+  }
+
+  @if (tab() === 'rewards') {
+    <p class="small-note muted">
+      Нагороди з реального життя: придумай, чим себе потішити, і обміняй на них монети.
+    </p>
+    <ul class="reward-list">
+      @for (r of game.rewards(); track r.id) {
+        <li class="reward-row">
+          <span class="reward-title">{{ r.title }}</span>
+          <button
+            type="button"
+            class="buy-btn"
+            [class.confirm]="pending() === r.id"
+            [disabled]="!affordable(r.price)"
+            (click)="redeem(r)"
+          >
+            @if (pending() === r.id) {
+              Обміняти?
+            } @else {
+              <span class="coin small" aria-hidden="true"></span>{{ r.price }}
+            }
+          </button>
+          <button
+            type="button"
+            class="icon-btn"
+            [attr.aria-label]="'Видалити ' + r.title"
+            (click)="removeReward(r)"
+          >
+            ×
+          </button>
+        </li>
+      }
+    </ul>
+    <div class="reward-form">
+      <input
+        class="text-input"
+        type="text"
+        maxlength="60"
+        placeholder="Напр. «Кіно з дівчиною»"
+        aria-label="Назва нагороди"
+        [value]="rewardTitle()"
+        (input)="rewardTitle.set($any($event.target).value)"
+      />
+      <input
+        class="time-input"
+        type="number"
+        min="1"
+        step="50"
+        aria-label="Ціна в монетах"
+        [value]="rewardPrice()"
+        (input)="rewardPrice.set($any($event.target).value)"
+      />
+      <button type="button" class="setting copy-btn" (click)="addReward()">Додати</button>
+    </div>
+    @if (history().length) {
+      <h3 class="field-label">Отримані нагороди</h3>
+      <ul class="history-list">
+        @for (h of history(); track h.at) {
+          <li>
+            <span>{{ h.title }}</span>
+            <span class="muted">{{ dateLabel(h.at) }} · −{{ h.price }}</span>
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <div class="shop-grid">
+      @for (item of items(); track item.id) {
+        @let s = item.category === 'bonus' ? 'buy' : state(item);
+        <div class="shop-item" [class.equipped]="s === 'equipped'">
+          <app-item-icon [item]="item.id" />
+          <span class="shop-item-title">{{ item.title }}</span>
+          @if (item.note) {
+            <span class="shop-item-note">{{ item.note }}</span>
+          }
+          @if (item.category === 'bonus') {
+            <span class="shop-item-note">Маєш: {{ game.freezes() }} з {{ maxFreezes }}</span>
+          }
+          <button
+            type="button"
+            class="buy-btn"
+            [class.confirm]="pending() === item.id"
+            [class.owned]="s !== 'buy'"
+            [disabled]="
+              (s === 'buy' && !affordable(item.price)) ||
+              (s === 'owned' && item.category === 'room')
+            "
+            (click)="act(item)"
+          >
+            @switch (s) {
+              @case ('equipped') {
+                {{ item.category === 'shirt' ? 'Вдягнено' : 'Зняти' }}
+              }
+              @case ('owned') {
+                {{ item.category === 'room' ? 'У кімнаті' : 'Вдягнути' }}
+              }
+              @default {
+                @if (pending() === item.id) {
+                  Купити?
+                } @else {
+                  <span class="coin small" aria-hidden="true"></span>{{ item.price }}
+                }
+              }
+            }
+          </button>
+        </div>
+      }
+    </div>
+  }
+</section>
