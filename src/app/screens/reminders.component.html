@@ -57,29 +57,69 @@
   <p class="muted small-note">Нагадування приходить у вказаний час, якщо квест ще не виконано.</p>
 </section>
 
-<section class="panel">
-  <h2 class="section-title">Будильник</h2>
-  <p class="small-note">
-    Сайт не може дзвонити як справжній будильник, тому будильник ставимо в «Годиннику», а гру
-    відкриває автоматизація «Команд».
-  </p>
-  <ol class="install-steps">
-    <li>Постав будильник у «Годиннику».</li>
-    <li>«Команди» → «Автоматизація» → «+» → «Будильник» → «Коли зупинено».</li>
-    <li>Дія «Відкрити URL» з адресою нижче.</li>
-    <li>Обери «Запускати одразу».</li>
-  </ol>
-  <div class="url-row">
-    <code class="url-box">{{ alarmUrl }}</code>
-    <button type="button" class="setting copy-btn" (click)="copyAlarmUrl()">
-      {{ copied() ? 'Скопійовано' : 'Копіювати' }}
-    </button>
-  </div>
-  <p class="muted small-note">
-    Якщо адреса відкривається в Safari, а не в грі з головного екрана, — це обмеження iOS: прогрес у
-    Safari окремий.
-  </p>
-</section>
+@if (nativeBridge.native) {
+  <section class="panel">
+    <h2 class="section-title">Будильник</h2>
+    @if (nativeBridge.alarmSupported()) {
+      <p class="small-note">
+        Справжній будильник iOS: дзвонить крізь беззвучний режим і фокус, з кнопкою «Стоп» на
+        заблокованому екрані.
+      </p>
+      <div class="reminder-row">
+        <label class="reminder-name" for="alarm-time">Щодня о</label>
+        <input
+          id="alarm-time"
+          class="time-input"
+          type="time"
+          [value]="nativeBridge.alarm().time"
+          (change)="setAlarmTime($event)"
+        />
+        <button
+          type="button"
+          class="switch"
+          [class.on]="nativeBridge.alarm().enabled"
+          [attr.aria-pressed]="nativeBridge.alarm().enabled"
+          aria-label="Будильник"
+          (click)="toggleAlarm()"
+        >
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      @if (alarmMessage(); as msg) {
+        <p class="status-text error-text" role="alert">{{ msg }}</p>
+      }
+    } @else {
+      <p class="small-note muted">
+        Справжній будильник працює з iOS 26. Поки що постав будильник у «Годиннику» — нагадування
+        гри прийдуть сповіщеннями.
+      </p>
+    }
+  </section>
+} @else {
+  <section class="panel">
+    <h2 class="section-title">Будильник</h2>
+    <p class="small-note">
+      Сайт не може дзвонити як справжній будильник, тому будильник ставимо в «Годиннику», а гру
+      відкриває автоматизація «Команд».
+    </p>
+    <ol class="install-steps">
+      <li>Постав будильник у «Годиннику».</li>
+      <li>«Команди» → «Автоматизація» → «+» → «Будильник» → «Коли зупинено».</li>
+      <li>Дія «Відкрити URL» з адресою нижче.</li>
+      <li>Обери «Запускати одразу».</li>
+    </ol>
+    <div class="url-row">
+      <code class="url-box">{{ alarmUrl }}</code>
+      <button type="button" class="setting copy-btn" (click)="copyAlarmUrl()">
+        {{ copied() ? 'Скопійовано' : 'Копіювати' }}
+      </button>
+    </div>
+    <p class="muted small-note">
+      Якщо адреса відкривається в Safari, а не в грі з головного екрана, — це обмеження iOS: прогрес
+      у Safari окремий.
+    </p>
+  </section>
+}
 
 <section class="panel">
   <h2 class="section-title">Сервер</h2>

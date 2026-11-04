@@ -1,0 +1,33 @@
+name: iOS app
+
+# Непідписаний LifeGame.ipa для встановлення через Sideloadly / AltStore (безкоштовний Apple ID).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'ios/**'
+      - 'native/**'
+      - 'public/**'
+      - 'package.json'
+      - 'capacitor.config.ts'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  ipa:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build unsigned IPA
+        run: ios/scripts/build-unsigned-ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LifeGame-ipa
+          path: LifeGame.ipa
+          retention-days: 30

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { QUESTS } from '../game/quests';
 import { AppConfigService } from '../reminders/app-config.service';
+import { NativeBridgeService } from '../native/native-bridge.service';
 import { RemindersService, ReminderStatus } from '../reminders/reminders.service';
 
 const STATUS_TEXT: Record<ReminderStatus, string> = {
@@ -23,6 +24,22 @@ const STATUS_TEXT: Record<ReminderStatus, string> = {
 export class RemindersComponent {
   protected readonly reminders = inject(RemindersService);
   protected readonly config = inject(AppConfigService);
+  protected readonly nativeBridge = inject(NativeBridgeService);
+  protected readonly alarmMessage = signal<string | null>(null);
+
+  protected async toggleAlarm(): Promise<void> {
+    const current = this.nativeBridge.alarm();
+    this.alarmMessage.set(
+      await this.nativeBridge.setAlarm({ ...current, enabled: !current.enabled }),
+    );
+  }
+
+  protected async setAlarmTime(event: Event): Promise<void> {
+    const time = (event.target as HTMLInputElement).value;
+    if (!/^\d{2}:\d{2}$/.test(time)) return;
+    const current = this.nativeBridge.alarm();
+    this.alarmMessage.set(await this.nativeBridge.setAlarm({ ...current, time }));
+  }
 
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);
   protected readonly serverDraft = signal(this.config.apiUrl());

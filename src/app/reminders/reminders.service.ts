@@ -6,6 +6,8 @@ import { dateKey, isQuestDone } from '../game/progress';
 import { Quest, QUESTS } from '../game/quests';
 import { notifyAt, reminderBody, Todo } from '../game/todos';
 import { FocusSession } from '../game/progression';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { isNative } from '../native/native';
 import { AppConfigService } from './app-config.service';
 
 export type ReminderStatus =
@@ -80,6 +82,7 @@ export interface PartnerSummary {
 }
 
 const BACKUP_KEY = 'life-game:server-backup';
+const NATIVE_KEY = 'life-game:native-reminders';
 
 export class ApiError extends Error {
   constructor(
@@ -109,7 +112,17 @@ export class RemindersService {
     this.swPush.isEnabled && typeof Notification !== 'undefined' && 'PushManager' in window;
   readonly needsInstall = isIos() && !isStandalone();
 
+  /** iOS-застосунок: сповіщення плануються на телефоні, сервер не потрібен. */
+  readonly native = isNative();
+  private readonly nativePermission = signal<string | null>(null);
+  private readonly nativeEnabled = signal(loadJson<boolean>(NATIVE_KEY) !== false);
+
   readonly status = computed<ReminderStatus>(() => {
+    if (this.native) {
+      const permission = this.nativePermission();
+      if (permission === 'denied') return 'denied';
+      return permission === 'granted' && this.nativeEnabled() ? 'on' : 'off';
+    }
     if (this.needsInstall) return 'needs-install';
     if (!this.supported) return 'unsupported';
     if (!this.config.apiUrl()) return 'no-server';
@@ -141,6 +154,11 @@ export class RemindersService {
       if (untracked(() => this.status()) === 'on') untracked(() => this.queueEvents());
     });
     void this.verifySubscription();
+    if (this.native) {
+      void LocalNotifications.checkPermissions()
+        .then((p) => this.nativePermission.set(p.display))
+        .catch(() => undefined);
+    }
   }
 
   setTime(questId: string, time: string): void {
@@ -156,6 +174,13 @@ export class RemindersService {
   /** Вмикає нагадування. Повертає текст помилки або null. Викликати лише з обробника натискання (вимога iOS). */
   async enable(): Promise<string | null> {
     if (this.busy()) return null;
+    if (this.native) {
+      const p = await LocalNotifications.requestPermissions();
+      this.nativePermission.set(p.display);
+      this.nativeEnabled.set(true);
+      saveJson(NATIVE_KEY, true);
+      return p.display === 'granted' ? null : 'Дозвіл на сповіщення не надано.';
+    }
     this.busy.set(true);
     try {
       const permission = await Notification.requestPermission();
@@ -193,6 +218,11 @@ export class RemindersService {
   }
 
   async disable(): Promise<string | null> {
+    if (this.native) {
+      this.nativeEnabled.set(false);
+      saveJson(NATIVE_KEY, false);
+      return null;
+    }
     const push = this.push();
     this.busy.set(true);
     try {
@@ -210,6 +240,19 @@ export class RemindersService {
   }
 
   async sendTest(): Promise<string | null> {
+    if (this.native) {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: 7,
+            title: 'Гра про життя',
+            body: 'Тестове нагадування: сповіщення працюють!',
+            schedule: { at: new Date(Date.now() + 3000) },
+          },
+        ],
+      });
+      return null;
+    }
     const push = this.push();
     if (!push) return 'Нагадування вимкнені.';
     this.busy.set(true);
@@ -269,7 +312,11 @@ export class RemindersService {
 
   // ---------- режим пари ----------
 
-  readonly connected = computed(() => this.status() === 'on');
+  /** Під'єднано до сервера (пара, копії, автоматизації) — у браузері через push-підписку. */
+  readonly connected = computed(() => {
+    const push = this.push();
+    return !!push && push.apiUrl === this.config.apiUrl();
+  });
 
   async createPairCode(): Promise<{ code: string; expiresAt: string } | { error: string }> {
     const push = this.push();

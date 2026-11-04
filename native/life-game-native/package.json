@@ -1,0 +1,15 @@
+{
+  "name": "life-game-native",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Нативні можливості «Гри про життя» на iOS: геозони, справжній будильник (AlarmKit), черга дій із Siri.",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ]
+}

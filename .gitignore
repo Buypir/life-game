@@ -48,3 +48,8 @@ server/**/bin/
 server/**/obj/
 server/**/data/
 server/e2e/node_modules/
+
+# iOS-збірка
+/build/
+/Payload/
+/LifeGame.ipa

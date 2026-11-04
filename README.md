@@ -6,6 +6,10 @@
 
 ![Ранковий квест](docs/demo.gif)
 
+**iOS-застосунок** без App Store і без $99: збірка в GitHub Actions, встановлення з Windows через
+Sideloadly — див. [docs/ios.md](docs/ios.md). У застосунку є локальні сповіщення, справжній
+будильник (AlarmKit), геозони для поїздок і Siri.
+
 **Стек:** Angular 22 (standalone, signals, zoneless), Canvas 2D (векторна графіка з інверсною кінематикою рук), Service Worker, Web Push ·
 ASP.NET Core 10 Minimal API · Vitest · GitHub Actions + GitHub Pages.
 
@@ -60,6 +64,8 @@ src/app/
   screens/     «Сьогодні», «Справи», «Магазин», «Прогрес», «Герой», «Нагадування»
 server/        сервер на ASP.NET Core: push, поїздки, Siri, пара, копії (див. server/README.md)
 device/        прошивка пристрою-компаньйона на ESP32
+ios/           iOS-застосунок (Capacitor): Siri й геозони в App/App/AppDelegate.swift
+native/        Swift-плагін: геолокація, геозони, будильник AlarmKit, черги дій
 docs/          демо для README
 ```
 

@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { GameStateService } from './game/game-state.service';
 import { arrivalText, TravelService } from './game/travel.service';
+import { NativeBridgeService } from './native/native-bridge.service';
 import { RemindersService } from './reminders/reminders.service';
 import { HeroComponent } from './screens/hero.component';
 import { ProgressComponent } from './screens/progress.component';
@@ -54,7 +55,18 @@ export class App {
     return this.game.todos().filter((t) => !t.done && t.date !== null && t.date <= today).length;
   });
 
+  private readonly nativeBridge = inject(NativeBridgeService);
+
   constructor() {
+    // iOS-застосунок: локальні сповіщення, геозони, Siri, будильник
+    this.nativeBridge.start();
+    effect(() => {
+      const screen = this.nativeBridge.openScreen();
+      if (screen && SCREENS.includes(screen as Screen)) {
+        untracked(() => this.go(screen as Screen));
+        this.nativeBridge.openScreen.set(null);
+      }
+    });
     // новий день починається опівночі, навіть якщо застосунок не закривали
     const refresh = () => this.game.refreshDay();
     const timer = setInterval(refresh, 60_000);

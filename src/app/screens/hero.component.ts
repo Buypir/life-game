@@ -82,7 +82,8 @@ export class HeroComponent {
 
   protected readonly savingPlace = signal<PlaceId | null>(null);
   protected readonly placeError = signal<string | null>(null);
-  protected readonly serverReady = computed(() => this.reminders.status() === 'on');
+  protected readonly serverReady = computed(() => this.reminders.connected());
+  protected readonly native = this.reminders.native;
   protected readonly linkBusy = signal(false);
   protected readonly linkError = signal<string | null>(null);
   protected readonly copied = signal<string | null>(null);
