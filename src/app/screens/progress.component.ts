@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  inject,
+  signal,
+} from '@angular/core';
+import { PartnerSummary, RemindersService } from '../reminders/reminders.service';
+import { HeroSpriteComponent } from '../scene/hero-sprite.component';
 import { ACTIVITIES } from '../game/activities';
 import { GameStateService } from '../game/game-state.service';
 import { BOSS_COINS, BOSS_XP, SKILLS } from '../game/progression';
@@ -10,6 +19,7 @@ const WEEKDAY_LABELS = ['Пн', '', 'Ср', '', 'Пт', '', 'Нд'];
 @Component({
   selector: 'app-progress',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [HeroSpriteComponent],
   templateUrl: './progress.component.html',
 })
 export class ProgressComponent {
@@ -18,6 +28,62 @@ export class ProgressComponent {
   protected readonly bossCoins = BOSS_COINS;
   protected readonly weekdayLabels = WEEKDAY_LABELS;
   protected readonly skillMessage = signal<string | null>(null);
+
+  // ---------- пара ----------
+
+  protected readonly reminders = inject(RemindersService);
+  protected readonly partner = signal<PartnerSummary | null | undefined>(undefined);
+  protected readonly pairCode = signal<{ code: string; expiresAt: string } | null>(null);
+  protected readonly codeInput = signal('');
+  protected readonly pairMessage = signal<string | null>(null);
+
+  constructor() {
+    const load = async () => {
+      if (this.reminders.connected()) this.partner.set(await this.reminders.partner());
+    };
+    void load();
+    // поки екран відкритий, перевіряємо, чи партнер не створив пару з нашим кодом і що в нього нового
+    const timer = setInterval(() => void load(), 30_000);
+    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+  }
+
+  protected readonly locationLabels: Record<string, string> = {
+    home: 'удома',
+    office: 'в офісі',
+    gym: 'у залі',
+    road: 'у дорозі',
+    park: 'у парку',
+    cafe: 'у кафе',
+  };
+
+  protected partnerToday(p: PartnerSummary): string {
+    if (p.date !== this.game.today()) return 'Сьогодні ще не заходили в гру';
+    return p.doneTitles.length
+      ? `Сьогодні: ${p.doneTitles.join(', ')}`
+      : 'Сьогодні квестів ще немає';
+  }
+
+  protected async createCode(): Promise<void> {
+    const result = await this.reminders.createPairCode();
+    if ('error' in result) this.pairMessage.set(result.error);
+    else this.pairCode.set(result);
+  }
+
+  protected async pair(): Promise<void> {
+    const result = await this.reminders.pair(this.codeInput());
+    if ('error' in result) {
+      this.pairMessage.set(result.error);
+      return;
+    }
+    this.pairMessage.set(null);
+    this.pairCode.set(null);
+    this.partner.set(await this.reminders.partner());
+  }
+
+  protected async unpair(): Promise<void> {
+    await this.reminders.unpair();
+    this.partner.set(null);
+  }
 
   protected readonly bossPercent = computed(() => {
     const b = this.game.boss();

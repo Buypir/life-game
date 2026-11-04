@@ -139,40 +139,130 @@
 </section>
 
 <section class="panel">
-  <h2 class="section-title">Поїздки із закритою грою</h2>
+  <h2 class="section-title">Автоматизації iPhone</h2>
   <p class="small-note">
-    iPhone сам помічає, що ти приїхав, і повідомляє серверу гри. Приходить сповіщення, а коли
-    відкриєш гру, герой проїде маршрут і отримає XP.
+    Поїздки, Siri й Apple Health працюють і з закритою грою: iPhone надсилає дію на сервер, а коли
+    відкриєш гру, герой усе виконає й отримає XP.
   </p>
   @if (!serverReady()) {
     <p class="muted small-note">
-      Потрібен сервер: спершу ввімкни сповіщення в розділі «Нагадування».
+      Потрібен сервер: спершу ввімкни сповіщення в «Нагадування й будильник».
     </p>
   } @else {
-    <ol class="install-steps">
-      <li>«Команди» → «Автоматизація» → «+» → «Прибуття» → обери адресу офісу.</li>
-      <li>Обери «Запускати одразу».</li>
-      <li>Дія «Отримати вміст URL»: посилання «Офіс» нижче, «Метод» — POST.</li>
-      <li>Так само для дому й залу.</li>
-    </ol>
-    @for (u of arrivalUrls(); track u.id) {
-      <div class="url-row">
-        <span class="field-label">{{ u.label }}</span>
-        <code class="url-box">{{ u.url }}</code>
-        <button type="button" class="setting copy-btn" (click)="copyUrl(u.id, u.url)">
-          {{ copiedPlace() === u.id ? 'Скопійовано' : 'Копіювати' }}
-        </button>
+    @if (arrivalUrls().length === 0) {
+      <button type="button" class="setting copy-btn" [disabled]="linkBusy()" (click)="createLink()">
+        {{ linkBusy() ? 'Створюю…' : 'Створити посилання' }}
+      </button>
+    } @else {
+      <div class="chips auto-tabs" role="tablist" aria-label="Тип автоматизації">
+        @for (t of autoTabs; track t.id) {
+          <button
+            type="button"
+            role="tab"
+            class="chip"
+            [class.on]="autoTab() === t.id"
+            [attr.aria-selected]="autoTab() === t.id"
+            (click)="autoTab.set(t.id)"
+          >
+            {{ t.label }}
+          </button>
+        }
       </div>
+      @switch (autoTab()) {
+        @case ('trips') {
+          <ol class="install-steps">
+            <li>«Команди» → «Автоматизація» → «+» → «Прибуття» → адреса офісу.</li>
+            <li>«Запускати одразу».</li>
+            <li>Дія «Отримати вміст URL»: посилання «Офіс», «Метод» — POST.</li>
+            <li>Так само для дому й залу.</li>
+          </ol>
+          @for (u of arrivalUrls(); track u.id) {
+            <div class="url-row">
+              <span class="field-label">{{ u.label }}</span>
+              <code class="url-box">{{ u.url }}</code>
+              <button type="button" class="setting copy-btn" (click)="copy(u.id, u.url)">
+                {{ copied() === u.id ? 'Скопійовано' : 'Копіювати' }}
+              </button>
+            </div>
+          }
+        }
+        @case ('siri') {
+          <ol class="install-steps">
+            <li>Обери справу нижче й скопіюй посилання.</li>
+            <li>«Команди» → «+» → назви команду, напр. «Почистив зуби».</li>
+            <li>Дія «Отримати вміст URL» з посиланням, «Метод» — POST.</li>
+            <li>Готово: «Гей Siri, почистив зуби».</li>
+          </ol>
+          <select
+            class="select-input"
+            aria-label="Справа для Siri"
+            [value]="siriAction()"
+            (change)="siriAction.set($any($event.target).value)"
+          >
+            @for (o of siriOptions; track o.id) {
+              <option [value]="o.id">{{ o.label }}</option>
+            }
+          </select>
+          <div class="url-row">
+            <code class="url-box">{{ actUrl(siriAction()) }}</code>
+            <button
+              type="button"
+              class="setting copy-btn"
+              (click)="copy('siri', actUrl(siriAction()))"
+            >
+              {{ copied() === 'siri' ? 'Скопійовано' : 'Копіювати' }}
+            </button>
+          </div>
+        }
+        @case ('health') {
+          <ol class="install-steps">
+            <li>«Команди» → «Автоматизація» → «+» → «Час доби» → 22:00, «Запускати одразу».</li>
+            <li>«Знайти зразки здоров’я»: кроки за сьогодні → «Обчислити статистику» → сума.</li>
+            <li>
+              «Отримати вміст URL»: посилання нижче, «Метод» — POST, «Тіло запиту» — JSON, поле
+              <code>steps</code> = сума. Можна додати <code>sleep</code> (год) і
+              <code>workout</code> (хв).
+            </li>
+          </ol>
+          <div class="url-row">
+            <code class="url-box">{{ actUrl('health') }}</code>
+            <button
+              type="button"
+              class="setting copy-btn"
+              (click)="copy('health', actUrl('health'))"
+            >
+              {{ copied() === 'health' ? 'Скопійовано' : 'Копіювати' }}
+            </button>
+          </div>
+          <p class="muted small-note">
+            6 000 кроків — +15 XP, 10 000 — ще +20, сон 7+ год — +20, тренування 20+ хв — +25.
+            @if (game.healthToday(); as h) {
+              Сьогодні: {{ h.steps }} кроків, сон {{ h.sleep }} год.
+            }
+          </p>
+        }
+        @case ('device') {
+          <p class="small-note">
+            Адреса для прошивки пристрою на ESP32 (папка <code>device/</code> у репозиторії): з неї
+            він бере стан героя, а кнопка «Готово» шле наступну справу.
+          </p>
+          <div class="url-row">
+            <code class="url-box">{{ deviceUrl() }}</code>
+            <button type="button" class="setting copy-btn" (click)="copy('device', deviceUrl())">
+              {{ copied() === 'device' ? 'Скопійовано' : 'Копіювати' }}
+            </button>
+          </div>
+        }
+      }
+      <button type="button" class="setting copy-btn" [disabled]="linkBusy()" (click)="createLink()">
+        {{ linkBusy() ? 'Створюю…' : 'Нові посилання' }}
+      </button>
     }
-    <button type="button" class="setting copy-btn" [disabled]="linkBusy()" (click)="createLink()">
-      {{ linkBusy() ? 'Створюю…' : arrivalUrls().length ? 'Нові посилання' : 'Створити посилання' }}
-    </button>
     @if (linkError(); as err) {
       <p class="status-text error-text" role="alert">{{ err }}</p>
     }
     <p class="muted small-note">
-      Посилання вміє лише відмічати приїзди. Не публікуй його: хто його має, може «приїжджати» за
-      тебе. «Нові посилання» вимикають старі.
+      Посилання вміють лише відмічати дії. Не публікуй їх. «Нові посилання» вимикають старі.
     </p>
   }
 </section>
@@ -211,6 +301,15 @@
       (change)="onImportFile($event)"
     />
   </label>
+  @if (serverReady()) {
+    <button type="button" class="setting" (click)="serverBackup()">
+      <span>Зберегти на сервер</span>
+      <span class="muted small">{{ lastBackupText() }}</span>
+    </button>
+    <button type="button" class="setting" (click)="restoreFromServer()">
+      <span>Відновити з сервера</span>
+    </button>
+  }
   @if (backupMessage(); as msg) {
     <p class="backup-msg" role="status">{{ msg }}</p>
   }

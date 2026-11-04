@@ -41,6 +41,58 @@
   </div>
 </section>
 
+<section class="panel pair-card">
+  <h2 class="section-title">Пара</h2>
+  @if (!reminders.connected()) {
+    <p class="muted small-note">
+      Грайте разом із кимось: бачите прогрес одне одного й отримуєте сповіщення, коли інший виконує
+      квест. Потрібен сервер — увімкни сповіщення в «Герой» → «Нагадування».
+    </p>
+  } @else if (partner(); as p) {
+    <div class="partner">
+      <app-hero-sprite
+        variant="avatar"
+        class="partner-avatar"
+        [look]="{ shirt: p.shirt, hat: p.hat, face: p.face }"
+      />
+      <div class="partner-info">
+        <span class="partner-name">{{ p.name }}</span>
+        <span class="muted small">
+          Рівень {{ p.level }} · серія {{ p.streak }} · {{ locationLabels[p.location] ?? '' }}
+        </span>
+        <span class="small">{{ partnerToday(p) }}</span>
+      </div>
+    </div>
+    <button type="button" class="link-btn muted-btn" (click)="unpair()">Роз’єднати пару</button>
+  } @else {
+    <p class="small-note">
+      Грайте разом: бачите прогрес одне одного, а коли хтось виконує квест, іншому приходить
+      сповіщення.
+    </p>
+    @if (pairCode(); as c) {
+      <p class="pair-code" aria-label="Код пари">{{ c.code }}</p>
+      <p class="muted small-note">Нехай партнер введе цей код у себе протягом 15 хвилин.</p>
+    } @else {
+      <button type="button" class="setting copy-btn" (click)="createCode()">Створити код</button>
+    }
+    <div class="pair-form">
+      <input
+        class="text-input"
+        inputmode="numeric"
+        maxlength="6"
+        placeholder="Код партнера"
+        aria-label="Код партнера"
+        [value]="codeInput()"
+        (input)="codeInput.set($any($event.target).value)"
+      />
+      <button type="button" class="btn-secondary" (click)="pair()">Об’єднатися</button>
+    </div>
+  }
+  @if (pairMessage(); as msg) {
+    <p class="status-text error-text" role="alert">{{ msg }}</p>
+  }
+</section>
+
 <section class="panel">
   <h2 class="section-title">Активність</h2>
   <div class="heatmap" aria-label="XP за останні 15 тижнів">

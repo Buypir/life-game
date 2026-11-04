@@ -1683,3 +1683,52 @@ app-hero {
   gap: 6px;
   align-items: center;
 }
+
+.chips.auto-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.partner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.partner-avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+
+.partner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.partner-name {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.pair-code {
+  margin: 0;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.pair-form .btn-secondary {
+  width: auto;
+  padding: 0 16px;
+}

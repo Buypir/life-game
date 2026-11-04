@@ -66,14 +66,19 @@ public static class PushApi
             Auth = sub.Auth,
             TimeZone = request.TimeZone!,
             Reminders = request.Reminders ?? [],
-            // ключ приїздів і незабрані приїзди переживають перепідписку того самого браузера
+            // ключ приїздів, черги й пара переживають перепідписку того самого браузера
             ArrivalKeyHash = existing?.ArrivalKeyHash,
             Arrivals = existing?.Arrivals ?? [],
             LastArrival = existing?.LastArrival,
+            Actions = existing?.Actions ?? [],
+            Summary = existing?.Summary,
+            PartnerId = existing?.PartnerId,
             CreatedAt = now,
             UpdatedAt = now,
         };
         await store.UpsertAsync(record, ct);
+        if (existing?.PartnerId is { } partnerOf)
+            await store.UpdateAsync(partnerOf, p => p.PartnerId == existing.Id ? p with { PartnerId = record.Id } : p, ct);
         return Results.Created($"/api/subscriptions/{record.Id}", new CreatedSubscriptionResponse(record.Id, secret));
     }
 
@@ -107,16 +112,51 @@ public static class PushApi
     }
 
     private static async Task<IResult> ProgressAsync(
-        string id, ProgressRequest request, HttpContext http, SubscriptionStore store, CancellationToken ct)
+        string id,
+        ProgressRequest request,
+        HttpContext http,
+        SubscriptionStore store,
+        IPushSender sender,
+        TimeProvider time,
+        CancellationToken ct)
     {
         if (Authorize(id, http, store) is { } denied) return denied;
         if (RequestValidator.Progress(request) is { } error) return BadRequest(error);
+        if (request.Summary is not null && RequestValidator.Summary(request.Summary) is { } summaryError)
+            return BadRequest(summaryError);
 
-        var updated = await store.UpdateAsync(id, s => s with
+        string[] newlyDone = [];
+        var updated = await store.UpdateAsync(id, s =>
         {
-            Progress = new DayProgress { Date = request.Date!, DoneQuests = request.DoneQuests ?? [] },
+            var summary = request.Summary is null ? s.Summary : request.Summary with { Date = request.Date!, UpdatedAt = time.GetUtcNow() };
+            if (request.Summary is not null)
+                newlyDone = GameRules.NewlyDone(s.Summary, summary!);
+            return s with
+            {
+                Progress = new DayProgress { Date = request.Date!, DoneQuests = request.DoneQuests ?? [] },
+                Summary = summary,
+            };
         }, ct);
-        return updated is null ? Results.NotFound() : Results.NoContent();
+        if (updated is null) return Results.NotFound();
+
+        // партнер дізнається про виконаний квест
+        if (newlyDone.Length > 0 && updated.PartnerId is { } partnerId && store.Get(partnerId) is { } partner)
+        {
+            var payload = ReminderPlanner.BuildPayload(
+                updated.Summary!.Name,
+                GameRules.PartnerNotice(newlyDone),
+                "partner",
+                "./?screen=progress");
+            try
+            {
+                await sender.SendAsync(partner, payload, "partner", ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // сповіщення партнерові — не критично
+            }
+        }
+        return Results.NoContent();
     }
 
     /// <summary>Замінює всі разові нагадування пристрою (клієнт надсилає повний актуальний список).</summary>
@@ -166,6 +206,8 @@ public static class PushApi
     private static async Task<IResult> DeleteAsync(string id, HttpContext http, SubscriptionStore store, CancellationToken ct)
     {
         if (Authorize(id, http, store) is { } denied) return denied;
+        if (store.Get(id)?.PartnerId is { } partnerId)
+            await store.UpdateAsync(partnerId, p => p.PartnerId == id ? p with { PartnerId = null } : p, ct);
         await store.RemoveAsync(id, ct);
         return Results.NoContent();
     }
@@ -193,12 +235,14 @@ public static class PushApi
     {
         if (Authorize(id, http, store) is { } denied) return denied;
         Arrival[] claimed = [];
+        QueuedAction[] actions = [];
         var updated = await store.UpdateAsync(id, s =>
         {
             claimed = s.Arrivals;
-            return claimed.Length == 0 ? s : s with { Arrivals = [] };
+            actions = s.Actions;
+            return claimed.Length == 0 && actions.Length == 0 ? s : s with { Arrivals = [], Actions = [] };
         }, ct);
-        return updated is null ? Results.NotFound() : Results.Ok(new ArrivalsResponse(claimed));
+        return updated is null ? Results.NotFound() : Results.Ok(new ArrivalsResponse(claimed, actions));
     }
 
     /// <summary>
@@ -247,7 +291,7 @@ public static class PushApi
     }
 
     /// <summary>Перевіряє секрет підписки. Невідомий id і хибний секрет дають однакову відповідь.</summary>
-    private static IResult? Authorize(string id, HttpContext http, SubscriptionStore store)
+    internal static IResult? Authorize(string id, HttpContext http, SubscriptionStore store)
     {
         var secret = http.Request.Headers[SecretHeader].ToString();
         var record = store.Get(id);
@@ -256,12 +300,12 @@ public static class PushApi
         return null;
     }
 
-    private static string Hash(string secret) =>
+    internal static string Hash(string secret) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
 
-    private static bool FixedEquals(string a, string b) =>
+    internal static bool FixedEquals(string a, string b) =>
         CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 
-    private static IResult BadRequest(string error) =>
+    internal static IResult BadRequest(string error) =>
         Results.Problem(error, statusCode: StatusCodes.Status400BadRequest, title: "Invalid request");
 }

@@ -89,6 +89,38 @@ public static class RequestValidator
         return null;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex ActionId = new("^[a-z][a-z0-9-]{0,31}$");
+    private static readonly System.Text.RegularExpressions.Regex Color = new("^#[0-9a-fA-F]{6}$");
+    private static readonly string[] Locations = ["home", "office", "gym", "road", "park", "cafe"];
+
+    public static bool IsActionId(string? action) => action is not null && ActionId.IsMatch(action);
+
+    public static string? Health(HealthBody? body)
+    {
+        if (body is null || (body.Steps is null && body.Sleep is null && body.Workout is null))
+            return "health needs steps, sleep or workout";
+        if (body.Steps is < 0 or > 200_000) return "steps must be 0..200000";
+        if (body.Sleep is < 0 or > 24) return "sleep must be 0..24 hours";
+        if (body.Workout is < 0 or > 1440) return "workout must be 0..1440 minutes";
+        return null;
+    }
+
+    public static string? Summary(PlayerSummary s)
+    {
+        if (string.IsNullOrWhiteSpace(s.Name) || s.Name.Length > 24) return "summary.name: 1..24 chars";
+        if (s.Level is < 1 or > 10_000 || s.Streak is < 0 or > 100_000 || s.Coins is < -1_000_000 or > 10_000_000)
+            return "summary: level, streak or coins out of range";
+        if (!Locations.Contains(s.Location)) return "summary.location is unknown";
+        if (s.DoneTitles.Length > 10 || s.DoneTitles.Any(t => string.IsNullOrWhiteSpace(t) || t.Length > 40))
+            return "summary.doneTitles: up to 10, max 40 chars";
+        if (!Color.IsMatch(s.Shirt)) return "summary.shirt must be #RRGGBB";
+        if (s.Hat is not null && !IsActionId(s.Hat) || s.Face is not null && !IsActionId(s.Face))
+            return "summary.hat/face must be item ids";
+        if (s.NextTaskId is not null && !IsActionId(s.NextTaskId)) return "summary.nextTaskId is invalid";
+        if (s.NextTaskTitle is { Length: > 60 }) return "summary.nextTaskTitle: max 60 chars";
+        return null;
+    }
+
     public static bool IsAllowedHost(string host, IEnumerable<string> allowed) =>
         allowed.Any(suffix =>
             host.Equals(suffix, StringComparison.OrdinalIgnoreCase) ||

@@ -1,6 +1,7 @@
 import { inject, Injectable, InjectionToken, signal } from '@angular/core';
-import { RemindersService, ServerArrival } from '../reminders/reminders.service';
-import { commuteTo, PLACE_LABELS, PlaceId, placeAt } from './activities';
+import { RemindersService, ServerAction, ServerArrival } from '../reminders/reminders.service';
+import { commuteTo, findActivity, PLACE_LABELS, PlaceId, placeAt } from './activities';
+import { findTask } from './quests';
 import { ActivityResult, GAME_CLOCK, GameStateService } from './game-state.service';
 import { dateKey } from './progress';
 
@@ -103,11 +104,59 @@ export class TravelService {
   async claimFromServer(): Promise<number> {
     let applied = 0;
     try {
-      for (const { place, at } of orderArrivals(await this.reminders.claimArrivals())) {
+      const { arrivals, actions } = await this.reminders.claim();
+      for (const { place, at } of orderArrivals(arrivals)) {
         if (this.arrive(place, 'shortcut', at)) applied++;
       }
+      applied += this.applyActions(actions);
     } catch {
       // сервер недоступний — заберемо наступного разу, черга там зберігається
+    }
+    return applied;
+  }
+
+  /** Дії з Siri, Apple Health і пристрою — по черзі, кожна у свій день. */
+  applyActions(actions: ServerAction[]): number {
+    let applied = 0;
+    const say = (text: string) => this.game.notices.update((list) => [...list, text]);
+    const sorted = actions
+      .map((a) => ({ ...a, when: new Date(a?.at) }))
+      .filter((a) => typeof a.action === 'string' && !Number.isNaN(a.when.getTime()))
+      .sort((a, b) => a.when.getTime() - b.when.getTime());
+    for (const a of sorted) {
+      const day = dateKey(a.when);
+      if (a.action === 'health') {
+        const xp = this.game.applyHealth(
+          {
+            steps: a.steps ?? undefined,
+            sleep: a.sleep ?? undefined,
+            workout: a.workout ?? undefined,
+          },
+          day,
+        );
+        if (xp > 0) say(`Apple Health · +${xp} XP`);
+        applied++;
+        continue;
+      }
+      const task = findTask(a.action);
+      if (task) {
+        const result = this.game.complete(a.action, day);
+        if (result) {
+          say(`Siri: «${task.task.title}» · +${result.xpGained} XP`);
+          applied++;
+        }
+        continue;
+      }
+      const activity = findActivity(a.action);
+      if (activity?.action === 'drive' && activity.to) {
+        if (this.arrive(activity.to, 'shortcut', a.when)) applied++;
+      } else if (activity) {
+        const result = this.game.doActivity(activity.id, day);
+        if (result) {
+          say(`Siri: «${activity.title}» · +${result.xpGained} XP`);
+          applied++;
+        }
+      }
     }
     return applied;
   }

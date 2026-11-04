@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { RemindersService, ServerArrival } from '../reminders/reminders.service';
+import { RemindersService, ServerAction, ServerArrival } from '../reminders/reminders.service';
 import { GAME_CLOCK, GAME_STORAGE, GameStateService } from './game-state.service';
 import { GEOLOCATION, orderArrivals, radiusFor, TravelService } from './travel.service';
 
@@ -13,12 +13,17 @@ interface Setup {
   position?: { lat: number; lon: number; accuracy?: number };
   geoError?: number;
   arrivals?: ServerArrival[];
+  actions?: ServerAction[];
   noGeo?: boolean;
 }
 
 function setup(options: Setup = {}) {
   const memory = new Map<string, string>();
-  const state = { position: options.position, arrivals: options.arrivals ?? [] };
+  const state = {
+    position: options.position,
+    arrivals: options.arrivals ?? [],
+    actions: options.actions ?? [],
+  };
   const geo = {
     getCurrentPosition: (ok: PositionCallback, fail?: PositionErrorCallback | null) => {
       if (options.geoError) {
@@ -48,10 +53,12 @@ function setup(options: Setup = {}) {
       {
         provide: RemindersService,
         useValue: {
-          claimArrivals: async () => {
-            const list = state.arrivals;
+          claim: async () => {
+            const arrivals = state.arrivals;
+            const actions = state.actions;
             state.arrivals = [];
-            return list;
+            state.actions = [];
+            return { arrivals, actions };
           },
           createArrivalLink: async () => ({ baseUrl: 'https://api.example.com/api/arrive/k' }),
         },
@@ -160,5 +167,24 @@ describe('travel', () => {
     expect(orderArrivals([{ place: 'office', at: '2026-11-04T07:10:00Z' }])[0].place).toBe(
       'office',
     );
+  });
+
+  it('applies Siri, Health and device actions', async () => {
+    const { game, travel } = setup({
+      actions: [
+        { action: 'brush', at: '2026-11-04T06:05:00Z' },
+        { action: 'wake', at: '2026-11-04T06:00:00Z' },
+        { action: 'health', at: '2026-11-04T20:00:00Z', steps: 11000, sleep: null },
+        { action: 'embedded', at: '2026-11-04T17:00:00Z' },
+        { action: 'to-gym', at: '2026-11-04T16:00:00Z' },
+        { action: 'unknown-thing', at: '2026-11-04T16:00:00Z' },
+      ],
+    });
+    expect(await travel.claimFromServer()).toBe(5);
+    expect([...game.doneToday()]).toEqual(['wake', 'brush']);
+    expect(game.activityCounts().get('embedded')).toBe(1);
+    expect(game.activityCounts().get('to-gym')).toBe(1);
+    expect(game.healthToday()?.steps).toBe(11000);
+    expect(game.takeNotices().some((n) => n.startsWith('Siri: «Почистити зуби»'))).toBe(true);
   });
 });

@@ -55,6 +55,7 @@ app.UseRateLimiter();
 app.MapGet("/", () => Results.Text("Life Game push server is running. See /health."));
 app.MapGet("/health", (SubscriptionStore store) => Results.Ok(new { status = "ok", subscriptions = store.All().Count }));
 app.MapPushApi();
+app.MapGameApi();
 
 app.Run();
 

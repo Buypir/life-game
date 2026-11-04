@@ -5,6 +5,7 @@ import { GameStateService } from '../game/game-state.service';
 import { dateKey, isQuestDone } from '../game/progress';
 import { Quest, QUESTS } from '../game/quests';
 import { notifyAt, reminderBody, Todo } from '../game/todos';
+import { FocusSession } from '../game/progression';
 import { AppConfigService } from './app-config.service';
 
 export type ReminderStatus =
@@ -54,6 +55,32 @@ export interface ServerArrival {
   at: string;
 }
 
+/** Дія з Siri, «Команд» (Apple Health) чи пристрою. */
+export interface ServerAction {
+  action: string;
+  at: string;
+  steps?: number | null;
+  sleep?: number | null;
+  workout?: number | null;
+}
+
+/** Стан партнера в режимі пари. */
+export interface PartnerSummary {
+  name: string;
+  level: number;
+  streak: number;
+  coins: number;
+  location: string;
+  date: string;
+  doneTitles: string[];
+  shirt: string;
+  hat?: string | null;
+  face?: string | null;
+  updatedAt: string;
+}
+
+const BACKUP_KEY = 'life-game:server-backup';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -97,13 +124,20 @@ export class RemindersService {
 
   constructor() {
     // прогрес дня → сервер, щоб він не нагадував про виконані квести
+    // (разом із коротким станом для партнера й пристрою)
     effect(() => {
       this.game.doneToday();
+      this.game.level();
+      this.game.streak();
+      this.game.look();
+      this.game.name();
+      this.game.location();
       if (untracked(() => this.status()) === 'on') untracked(() => this.queueProgress());
     });
-    // список справ → разові нагадування на сервері
+    // список справ і фокус-таймер → разові нагадування на сервері
     effect(() => {
       this.game.todos();
+      this.game.focus();
       if (untracked(() => this.status()) === 'on') untracked(() => this.queueEvents());
     });
     void this.verifySubscription();
@@ -213,17 +247,140 @@ export class RemindersService {
     }
   }
 
-  /** Забирає з сервера приїзди, відмічені, поки застосунок був закритий. */
-  async claimArrivals(): Promise<ServerArrival[]> {
+  /** Забирає з сервера приїзди й дії (Siri, Health), відмічені, поки застосунок був закритий. */
+  async claim(): Promise<{ arrivals: ServerArrival[]; actions: ServerAction[] }> {
     const push = this.push();
-    if (!push) return [];
-    const response = await this.request<{ arrivals?: ServerArrival[] }>(
+    if (!push) return { arrivals: [], actions: [] };
+    const response = await this.request<{ arrivals?: ServerArrival[]; actions?: ServerAction[] }>(
       'POST',
       `/api/subscriptions/${push.id}/arrivals/claim`,
       undefined,
       push,
     );
-    return Array.isArray(response?.arrivals) ? response.arrivals : [];
+    return {
+      arrivals: Array.isArray(response?.arrivals) ? response.arrivals : [],
+      actions: Array.isArray(response?.actions) ? response.actions : [],
+    };
+  }
+
+  async claimArrivals(): Promise<ServerArrival[]> {
+    return (await this.claim()).arrivals;
+  }
+
+  // ---------- режим пари ----------
+
+  readonly connected = computed(() => this.status() === 'on');
+
+  async createPairCode(): Promise<{ code: string; expiresAt: string } | { error: string }> {
+    const push = this.push();
+    if (!push) return { error: 'Спершу ввімкни нагадування: пара працює через сервер.' };
+    try {
+      return await this.request('POST', `/api/subscriptions/${push.id}/pair-code`, undefined, push);
+    } catch (err) {
+      return { error: errorText(err) };
+    }
+  }
+
+  async pair(code: string): Promise<{ partner: PartnerSummary | null } | { error: string }> {
+    const push = this.push();
+    if (!push) return { error: 'Спершу ввімкни нагадування.' };
+    try {
+      const res = await this.request<{ summary: PartnerSummary | null }>(
+        'POST',
+        `/api/subscriptions/${push.id}/pair`,
+        { code: code.replace(/\D/g, '') },
+        push,
+      );
+      return { partner: res?.summary ?? null };
+    } catch (err) {
+      return { error: errorText(err) };
+    }
+  }
+
+  /** null — пари немає; undefined — сервер недоступний. */
+  async partner(): Promise<PartnerSummary | null | undefined> {
+    const push = this.push();
+    if (!push) return null;
+    try {
+      const res = await this.request<{ summary: PartnerSummary | null }>(
+        'GET',
+        `/api/subscriptions/${push.id}/partner`,
+        undefined,
+        push,
+      );
+      return (
+        res?.summary ??
+        ({
+          name: '…',
+          level: 1,
+          streak: 0,
+          coins: 0,
+          location: 'home',
+          date: '',
+          doneTitles: [],
+          shirt: '#3B5BFD',
+          updatedAt: '',
+        } as PartnerSummary)
+      );
+    } catch (err) {
+      return err instanceof ApiError && err.status === 404 ? null : undefined;
+    }
+  }
+
+  async unpair(): Promise<void> {
+    const push = this.push();
+    if (!push) return;
+    await this.request('DELETE', `/api/subscriptions/${push.id}/pair`, undefined, push).catch(
+      () => undefined,
+    );
+  }
+
+  // ---------- резервна копія на сервері ----------
+
+  readonly lastBackup = signal<string | null>(loadJson<string>(BACKUP_KEY));
+
+  async uploadBackup(): Promise<string | null> {
+    const push = this.push();
+    if (!push) return 'Спершу ввімкни нагадування.';
+    try {
+      await this.request(
+        'PUT',
+        `/api/subscriptions/${push.id}/backup`,
+        JSON.parse(this.game.exportData()),
+        push,
+      );
+      const stamp = new Date().toISOString();
+      this.lastBackup.set(stamp);
+      saveJson(BACKUP_KEY, stamp);
+      return null;
+    } catch (err) {
+      return errorText(err);
+    }
+  }
+
+  async downloadBackup(): Promise<string | { error: string }> {
+    const push = this.push();
+    if (!push) return { error: 'Спершу ввімкни нагадування.' };
+    try {
+      const data = await this.request<unknown>(
+        'GET',
+        `/api/subscriptions/${push.id}/backup`,
+        undefined,
+        push,
+      );
+      return JSON.stringify(data);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404)
+        return { error: 'На сервері ще немає копії.' };
+      return { error: errorText(err) };
+    }
+  }
+
+  /** Раз на день копія прогресу сама летить на сервер. */
+  private async autoBackup(): Promise<void> {
+    const last = this.lastBackup();
+    if (last && last.slice(0, 10) === new Date().toISOString().slice(0, 10)) return;
+    await this.uploadBackup();
   }
 
   private updateSetting(questId: string, change: Partial<ReminderSetting>): void {
@@ -267,7 +424,7 @@ export class RemindersService {
     await this.request(
       'PUT',
       `/api/subscriptions/${push.id}/progress`,
-      { date: this.game.today(), doneQuests },
+      { date: this.game.today(), doneQuests, summary: playerSummary(this.game) },
       push,
     ).catch(() => undefined);
   }
@@ -284,7 +441,7 @@ export class RemindersService {
     await this.request(
       'PUT',
       `/api/subscriptions/${push.id}/events`,
-      { events: todoEvents(this.game.todos(), new Date()) },
+      { events: [...todoEvents(this.game.todos(), new Date()), ...focusEvents(this.game.focus())] },
       push,
     ).catch(() => undefined);
   }
@@ -310,6 +467,8 @@ export class RemindersService {
       }
       await this.sendSchedule();
       await this.sendEvents();
+      await this.sendProgress();
+      await this.autoBackup();
     } catch {
       // сервер недоступний — спробуємо наступного разу
     }
@@ -370,6 +529,42 @@ export class RemindersService {
     this.push.set(state);
     saveJson(PUSH_KEY, state);
   }
+}
+
+/** Сповіщення, коли закінчиться фокус-таймер (навіть якщо гру закрито). */
+export function focusEvents(focus: FocusSession | null) {
+  if (!focus) return [];
+  const end = new Date(new Date(focus.start).getTime() + focus.minutes * 60_000);
+  return [
+    {
+      id: 'focus',
+      notifyAt: end.toISOString(),
+      title: 'Фокус завершено',
+      body: `${focus.minutes} хв — є! Відкрий гру, щоб забрати XP.`,
+      url: './',
+    },
+  ];
+}
+
+/** Короткий стан для партнера й пристрою на ESP32. */
+export function playerSummary(game: GameStateService) {
+  const done = game.doneToday();
+  const quest = QUESTS.find((q) => !isQuestDone(q, done));
+  const next = quest?.tasks.find((t) => !done.has(t.id));
+  const look = game.look();
+  return {
+    name: game.name(),
+    level: game.level().level,
+    streak: game.streak(),
+    coins: game.coins(),
+    location: game.location(),
+    doneTitles: QUESTS.filter((q) => isQuestDone(q, done)).map((q) => q.title),
+    shirt: look.shirt,
+    hat: look.hat,
+    face: look.face,
+    nextTaskId: next?.id ?? null,
+    nextTaskTitle: next?.title ?? null,
+  };
 }
 
 /**

@@ -6,12 +6,12 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { PLACE_LABELS, PlaceId } from '../game/activities';
+import { ACTIVITIES, PLACE_LABELS, PlaceId } from '../game/activities';
 import { GameStateService } from '../game/game-state.service';
 import { TravelService } from '../game/travel.service';
 import { RemindersService } from '../reminders/reminders.service';
 import { daysLabel } from '../game/plural';
-import { STAT_LABELS, STAT_ORDER } from '../game/quests';
+import { QUESTS, STAT_LABELS, STAT_ORDER } from '../game/quests';
 import { HeroSpriteComponent } from '../scene/hero-sprite.component';
 
 const WEEKDAYS = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -85,7 +85,50 @@ export class HeroComponent {
   protected readonly serverReady = computed(() => this.reminders.status() === 'on');
   protected readonly linkBusy = signal(false);
   protected readonly linkError = signal<string | null>(null);
-  protected readonly copiedPlace = signal<PlaceId | null>(null);
+  protected readonly copied = signal<string | null>(null);
+  protected readonly autoTabs = [
+    { id: 'trips', label: 'Поїздки' },
+    { id: 'siri', label: 'Siri' },
+    { id: 'health', label: 'Health' },
+    { id: 'device', label: 'ESP32' },
+  ] as const;
+  protected readonly autoTab = signal<'trips' | 'siri' | 'health' | 'device'>('trips');
+  protected readonly siriOptions = [
+    ...QUESTS.flatMap((q) => q.tasks.map((t) => ({ id: t.id, label: `${q.short}: ${t.title}` }))),
+    ...ACTIVITIES.map((a) => ({ id: a.id, label: `Ще: ${a.title}` })),
+  ];
+  protected readonly siriAction = signal('brush');
+
+  /** Базова адреса /api/act/{ключ} з посилання для поїздок. */
+  protected actUrl(action: string): string {
+    return `${(this.travel.arrivalLink() ?? '').replace('/api/arrive/', '/api/act/')}/${action}`;
+  }
+
+  protected readonly deviceUrl = computed(() =>
+    (this.travel.arrivalLink() ?? '').replace('/api/arrive/', '/api/device/'),
+  );
+
+  protected readonly lastBackupText = computed(() => {
+    const stamp = this.reminders.lastBackup();
+    return stamp
+      ? new Date(stamp).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })
+      : 'ще не було';
+  });
+
+  protected async serverBackup(): Promise<void> {
+    const error = await this.reminders.uploadBackup();
+    this.backupMessage.set(error ?? 'Копію збережено на сервері.');
+  }
+
+  protected async restoreFromServer(): Promise<void> {
+    const result = await this.reminders.downloadBackup();
+    if (typeof result !== 'string') {
+      this.backupMessage.set(result.error);
+      return;
+    }
+    this.pendingImport.set(result);
+    this.backupMessage.set('Поточний прогрес буде замінено копією з сервера.');
+  }
 
   protected readonly placeRows = computed(() => {
     const saved = this.game.places();
@@ -161,13 +204,13 @@ export class HeroComponent {
     }
   }
 
-  protected async copyUrl(id: PlaceId, url: string): Promise<void> {
+  protected async copy(id: string, url: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(url);
-      this.copiedPlace.set(id);
-      setTimeout(() => this.copiedPlace.set(null), 2000);
+      this.copied.set(id);
+      setTimeout(() => this.copied.set(null), 2000);
     } catch {
-      this.copiedPlace.set(null);
+      this.copied.set(null);
     }
   }
 
