@@ -1,4 +1,5 @@
 import { Quest, StatKey } from './quests';
+import { parseTodos, Todo } from './todos';
 
 export type Stats = Record<StatKey, number>;
 
@@ -10,6 +11,8 @@ export interface SaveData {
   stats: Stats;
   /** Виконані справи за днями: 'YYYY-MM-DD' → id справ. */
   days: Record<string, string[]>;
+  /** Список справ (окремо від щоденних квестів). */
+  todos: Todo[];
   sound: boolean;
 }
 
@@ -19,6 +22,7 @@ export function emptySave(): SaveData {
     xp: 0,
     stats: { strength: 0, intellect: 0, energy: 0, discipline: 0, work: 0 },
     days: {},
+    todos: [],
     sound: true,
   };
 }
@@ -140,6 +144,7 @@ export function parseSave(raw: string | null): SaveData {
       xp: typeof data.xp === 'number' && Number.isFinite(data.xp) ? Math.max(0, data.xp) : 0,
       stats,
       days,
+      todos: parseTodos(data.todos),
       sound: typeof data.sound === 'boolean' ? data.sound : true,
     };
   } catch {

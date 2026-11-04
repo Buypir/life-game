@@ -135,6 +135,52 @@ describe('GameStateService', () => {
     expect(game.importData('{"hello": 1}')).toContain('не резервна');
   });
 
+  it('adds, edits, completes and removes todos with XP', () => {
+    const game = create();
+    const t = game.addTodo({
+      title: 'Стрижка',
+      date: '2026-11-04',
+      time: '14:00',
+      remindBefore: 30,
+    });
+    expect(t?.id).toBeTruthy();
+    expect(
+      game.updateTodo(t!.id, {
+        title: 'Стрижка у Олі',
+        date: '2026-11-04',
+        time: '15:00',
+        remindBefore: 60,
+      }),
+    ).toBe(true);
+    expect(game.todos()[0]).toMatchObject({
+      title: 'Стрижка у Олі',
+      time: '15:00',
+      remindBefore: 60,
+    });
+
+    expect(game.toggleTodo(t!.id)).toBe(10);
+    expect(game.xp()).toBe(10);
+    expect(game.stats().discipline).toBe(1);
+    expect(game.todos()[0].done).toBe(true);
+    expect(game.toggleTodo(t!.id)).toBe(-10);
+    expect(game.xp()).toBe(0);
+
+    game.removeTodo(t!.id);
+    expect(game.todos()).toHaveLength(0);
+    expect(game.addTodo({ title: '  ', date: null, time: null, remindBefore: null })).toBeNull();
+  });
+
+  it('keeps todos when progress is reset and includes them in backups', () => {
+    const game = create();
+    game.addTodo({ title: 'Стрижка', date: '2026-11-04', time: '14:00', remindBefore: 30 });
+    const backup = game.exportData();
+    game.reset();
+    expect(game.todos()).toHaveLength(1);
+    game.removeTodo(game.todos()[0].id);
+    game.importData(backup);
+    expect(game.todos()[0].title).toBe('Стрижка');
+  });
+
   it('reset clears progress but keeps the sound setting', () => {
     const game = create();
     game.setSound(false);

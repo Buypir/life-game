@@ -2,8 +2,9 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 import { SwPush } from '@angular/service-worker';
 import { firstValueFrom } from 'rxjs';
 import { GameStateService } from '../game/game-state.service';
-import { isQuestDone } from '../game/progress';
+import { dateKey, isQuestDone } from '../game/progress';
 import { Quest, QUESTS } from '../game/quests';
+import { notifyAt, reminderBody, Todo } from '../game/todos';
 import { AppConfigService } from './app-config.service';
 
 export type ReminderStatus =
@@ -86,12 +87,18 @@ export class RemindersService {
 
   private scheduleTimer?: ReturnType<typeof setTimeout>;
   private progressTimer?: ReturnType<typeof setTimeout>;
+  private eventsTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
     // прогрес дня → сервер, щоб він не нагадував про виконані квести
     effect(() => {
       this.game.doneToday();
       if (untracked(() => this.status()) === 'on') untracked(() => this.queueProgress());
+    });
+    // список справ → разові нагадування на сервері
+    effect(() => {
+      this.game.todos();
+      if (untracked(() => this.status()) === 'on') untracked(() => this.queueEvents());
     });
     void this.verifySubscription();
   }
@@ -136,6 +143,7 @@ export class RemindersService {
         endpoint: subscription.endpoint,
       });
       await this.sendProgress();
+      await this.sendEvents();
       return null;
     } catch (err) {
       return errorText(err);
@@ -223,6 +231,23 @@ export class RemindersService {
     ).catch(() => undefined);
   }
 
+  private queueEvents(): void {
+    clearTimeout(this.eventsTimer);
+    this.eventsTimer = setTimeout(() => void this.sendEvents(), 800);
+  }
+
+  /** Надсилає повний список майбутніх нагадувань про справи. */
+  async sendEvents(): Promise<void> {
+    const push = this.push();
+    if (!push) return;
+    await this.request(
+      'PUT',
+      `/api/subscriptions/${push.id}/events`,
+      { events: todoEvents(this.game.todos(), new Date()) },
+      push,
+    ).catch(() => undefined);
+  }
+
   /** Після перезапуску перевіряє, чи браузерна підписка ще жива і чи не змінилася. */
   private async verifySubscription(): Promise<void> {
     const push = this.push();
@@ -243,6 +268,7 @@ export class RemindersService {
         this.savePush({ ...push, endpoint: current.endpoint });
       }
       await this.sendSchedule();
+      await this.sendEvents();
     } catch {
       // сервер недоступний — спробуємо наступного разу
     }
@@ -303,6 +329,26 @@ export class RemindersService {
     this.push.set(state);
     saveJson(PUSH_KEY, state);
   }
+}
+
+/**
+ * Нагадування про справи, які ще попереду. «Сьогодні/завтра» в тексті рахуються від дня,
+ * коли сповіщення прийде, а не від дня, коли його запланували.
+ */
+export function todoEvents(todos: Todo[], now: Date) {
+  return todos.flatMap((todo) => {
+    const at = notifyAt(todo);
+    if (todo.done || !at || at.getTime() < now.getTime() - 60_000) return [];
+    return [
+      {
+        id: todo.id,
+        notifyAt: at.toISOString(),
+        title: todo.title,
+        body: reminderBody(todo, dateKey(at)),
+        url: './?screen=todos',
+      },
+    ];
+  });
 }
 
 function loadSettings(): ReminderSetting[] {

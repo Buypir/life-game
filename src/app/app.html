@@ -3,6 +3,9 @@
     @case ('today') {
       <app-today />
     }
+    @case ('todos') {
+      <app-todos (openReminders)="go('reminders')" />
+    }
     @case ('reminders') {
       <app-reminders />
     }
@@ -30,6 +33,31 @@
       <rect x="3" y="4" width="2" height="1" />
     </svg>
     Сьогодні
+  </button>
+  <button
+    type="button"
+    class="nav-item"
+    [class.active]="screen() === 'todos'"
+    [attr.aria-current]="screen() === 'todos' ? 'page' : null"
+    (click)="go('todos')"
+  >
+    <span class="nav-icon">
+      <svg viewBox="0 0 8 8" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges">
+        <rect x="0" y="0" width="2" height="2" />
+        <rect x="3" y="0" width="5" height="1" />
+        <rect x="0" y="3" width="2" height="2" />
+        <rect x="3" y="3" width="5" height="1" />
+        <rect x="0" y="6" width="2" height="2" />
+        <rect x="3" y="6" width="5" height="1" />
+      </svg>
+      @if (todosBadge() > 0) {
+        <span class="badge" aria-hidden="true">{{ todosBadge() }}</span>
+      }
+    </span>
+    Справи
+    @if (todosBadge() > 0) {
+      <span class="sr-only">, на сьогодні {{ todosBadge() }}</span>
+    }
   </button>
   <button
     type="button"

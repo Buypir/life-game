@@ -11,6 +11,7 @@ import {
   SaveData,
 } from './progress';
 import { findTask, Quest, QUEST_BONUS_XP, QUESTS } from './quests';
+import { cleanInput, newTodoId, Todo, TODO_XP, TodoInput } from './todos';
 
 export const STORAGE_KEY = 'life-game:v1';
 
@@ -147,9 +148,72 @@ export class GameStateService {
     this.commit({ ...this.save(), sound: on });
   }
 
+  /** Скидає досвід і квести; звуки й список справ лишаються. */
   reset(): void {
-    const sound = this.save().sound;
-    this.commit({ ...emptySave(), sound });
+    const { sound, todos } = this.save();
+    this.commit({ ...emptySave(), sound, todos });
+  }
+
+  // ---------- список справ ----------
+
+  readonly todos = computed(() => this.save().todos);
+
+  addTodo(input: TodoInput): Todo | null {
+    const clean = cleanInput(input);
+    if (!clean) return null;
+    const todo: Todo = {
+      id: newTodoId(),
+      ...clean,
+      done: false,
+      doneAt: null,
+      createdAt: this.clock().toISOString(),
+    };
+    const current = this.save();
+    this.commit({ ...current, todos: [...current.todos, todo] });
+    return todo;
+  }
+
+  updateTodo(id: string, input: TodoInput): boolean {
+    const clean = cleanInput(input);
+    if (!clean) return false;
+    const current = this.save();
+    if (!current.todos.some((t) => t.id === id)) return false;
+    this.commit({
+      ...current,
+      todos: current.todos.map((t) => (t.id === id ? { ...t, ...clean } : t)),
+    });
+    return true;
+  }
+
+  removeTodo(id: string): void {
+    const current = this.save();
+    this.commit({ ...current, todos: current.todos.filter((t) => t.id !== id) });
+  }
+
+  /** Відмічає справу виконаною (+XP і Дисципліна) або повертає назад. Повертає зміну XP. */
+  toggleTodo(id: string): number {
+    const current = this.save();
+    const todo = current.todos.find((t) => t.id === id);
+    if (!todo) return 0;
+    const done = !todo.done;
+    const delta = done ? TODO_XP : -TODO_XP;
+    this.commit({
+      ...current,
+      xp: Math.max(0, current.xp + delta),
+      stats: {
+        ...current.stats,
+        discipline: Math.max(0, current.stats.discipline + (done ? 1 : -1)),
+      },
+      todos: current.todos.map((t) =>
+        t.id === id ? { ...t, done, doneAt: done ? this.clock().toISOString() : null } : t,
+      ),
+    });
+    return delta;
+  }
+
+  clearDoneTodos(): void {
+    const current = this.save();
+    this.commit({ ...current, todos: current.todos.filter((t) => !t.done) });
   }
 
   /** Резервна копія прогресу у вигляді JSON. */
