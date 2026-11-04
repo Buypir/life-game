@@ -35,7 +35,17 @@ Web Push на iPhone (і в будь-який інший браузер із п�
 | POST | `/api/subscriptions/{id}/arrivals/claim` | забрати чергу приїздів → `{ arrivals: [{ place, at }] }` |
 | POST | `/api/arrive/{key}/{place}` | приїзд (`home`, `office`, `gym`) з автоматизації iOS: 202 — прийнято й надіслано сповіщення, 200 `{ accepted: false }` — повтор того самого місця за 10 хв |
 
-Усе, крім створення й `/api/arrive`, вимагає заголовок `X-Subscription-Secret`.
+| POST | `/api/act/{key}/{action}` | дія з Siri чи пристрою: id справи (`brush`) або активності (`embedded`); `health` з JSON `{ steps, sleep, workout }` |
+| GET | `/api/device/{key}` | стан для пристрою: ім'я, рівень, серія, найближчі справи, прогрес дня, нагадування |
+| POST | `/api/subscriptions/{id}/pair-code` | код пари з 6 цифр (діє 15 хв) |
+| POST | `/api/subscriptions/{id}/pair` | `{ code }` — об'єднатися в пару |
+| GET | `/api/subscriptions/{id}/partner` | стан партнера |
+| DELETE | `/api/subscriptions/{id}/pair` | роз'єднати пару |
+| PUT/GET | `/api/subscriptions/{id}/backup` | резервна копія прогресу (JSON до 512 КБ) |
+
+Усе, крім створення, `/api/arrive`, `/api/act` і `/api/device`, вимагає заголовок `X-Subscription-Secret`.
+Прогрес (`PUT …/progress`) може містити `summary` — короткий стан для партнера й пристрою; коли в
+ньому з'являється новий виконаний квест, партнер отримує сповіщення.
 Ключ приїздів окремий від секрету: він уміє лише відмічати приїзди, тож його можна вставити в URL
 автоматизації «Команд», не віддаючи повний доступ до підписки. Сервер зберігає лише SHA-256 ключа.
 
