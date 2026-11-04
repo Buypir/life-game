@@ -31,8 +31,13 @@ Web Push на iPhone (і в будь-який інший браузер із п�
 | PUT | `/api/subscriptions/{id}/events` | `{ events: [{ id, notifyAt, title, body, url }] }` — разові нагадування про справи (повний список) |
 | POST | `/api/subscriptions/{id}/test` | надіслати тестове сповіщення зараз |
 | DELETE | `/api/subscriptions/{id}` | відписатися |
+| POST | `/api/subscriptions/{id}/arrival-key` | новий ключ приїздів → `{ key }` (старий перестає діяти) |
+| POST | `/api/subscriptions/{id}/arrivals/claim` | забрати чергу приїздів → `{ arrivals: [{ place, at }] }` |
+| POST | `/api/arrive/{key}/{place}` | приїзд (`home`, `office`, `gym`) з автоматизації iOS: 202 — прийнято й надіслано сповіщення, 200 `{ accepted: false }` — повтор того самого місця за 10 хв |
 
-Усе, крім створення, вимагає заголовок `X-Subscription-Secret`.
+Усе, крім створення й `/api/arrive`, вимагає заголовок `X-Subscription-Secret`.
+Ключ приїздів окремий від секрету: він уміє лише відмічати приїзди, тож його можна вставити в URL
+автоматизації «Команд», не віддаючи повний доступ до підписки. Сервер зберігає лише SHA-256 ключа.
 
 ## Налаштування
 

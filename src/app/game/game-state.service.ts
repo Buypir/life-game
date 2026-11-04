@@ -4,6 +4,7 @@ import {
   currentStreak,
   dateKey,
   emptySave,
+  isDateKey,
   isQuestDone,
   levelInfo,
   parseSave,
@@ -12,8 +13,18 @@ import {
 } from './progress';
 import { findTask, Quest, QUEST_BONUS_XP, QUESTS } from './quests';
 import { cleanInput, newTodoId, Todo, TODO_XP, TodoInput } from './todos';
+import { Activity, findActivity, LocationId, locationAfter, Place, PlaceId } from './activities';
 
 export const STORAGE_KEY = 'life-game:v1';
+
+export interface ActivityResult {
+  activity: Activity;
+  xpGained: number;
+  leveledUp: boolean;
+  level: number;
+  /** День, у журнал якого записано активність. */
+  day: string;
+}
 
 /** Сховище й годинник винесені в токени, щоб логіку можна було тестувати. */
 export const GAME_STORAGE = new InjectionToken<Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>>(
@@ -68,7 +79,9 @@ export class GameStateService {
   /** Герой спить, поки за день нічого не зроблено, і після «Лягти спати». */
   readonly asleep = computed(() => {
     const done = this.doneToday();
-    return done.has('sleep') || done.size === 0;
+    return (
+      done.has('sleep') || (done.size === 0 && (this.save().log[this.today()] ?? []).length === 0)
+    );
   });
   readonly awake = computed(() => !this.asleep());
   readonly wentToBed = computed(() => this.doneToday().has('sleep'));
@@ -96,6 +109,7 @@ export class GameStateService {
     if (doneIds.includes(taskId)) return null;
 
     const nextDone = [...doneIds, taskId];
+    // щоденні квести герой виконує вдома
     const questCompleted = isQuestDone(quest, new Set(nextDone));
     const xpGained = task.xp + (questCompleted ? QUEST_BONUS_XP : 0);
     const levelBefore = levelInfo(current.xp).level;
@@ -108,6 +122,7 @@ export class GameStateService {
       xp: current.xp + xpGained,
       stats,
       days: { ...current.days, [today]: nextDone },
+      location: 'home',
     };
     this.commit(next);
 
@@ -150,8 +165,78 @@ export class GameStateService {
 
   /** Скидає досвід і квести; звуки й список справ лишаються. */
   reset(): void {
-    const { sound, todos } = this.save();
-    this.commit({ ...emptySave(), sound, todos });
+    const { sound, todos, places, tracking } = this.save();
+    this.commit({ ...emptySave(), sound, todos, places, tracking });
+  }
+
+  // ---------- активності й місця ----------
+
+  readonly location = computed(() => this.save().location);
+  readonly places = computed(() => this.save().places);
+  readonly tracking = computed(() => this.save().tracking);
+  /** Скільки разів кожну активність виконано сьогодні. */
+  readonly activityCounts = computed(() => {
+    const counts = new Map<string, number>();
+    for (const id of this.save().log[this.today()] ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
+    return counts;
+  });
+
+  /**
+   * Зараховує активність. day — дата запису (за замовчуванням сьогодні): приїзд,
+   * який сервер зафіксував учора ввечері, піде в учорашній журнал.
+   */
+  doActivity(id: string, day?: string): ActivityResult | null {
+    const activity = findActivity(id);
+    if (!activity) return null;
+    const current = this.save();
+    const today = day && isDateKey(day) ? day : this.today();
+    const before = levelInfo(current.xp).level;
+    const next: SaveData = {
+      ...current,
+      xp: current.xp + activity.xp,
+      stats: { ...current.stats, [activity.stat]: current.stats[activity.stat] + 1 },
+      log: { ...current.log, [today]: [...(current.log[today] ?? []), id] },
+      location: locationAfter(activity),
+    };
+    this.commit(next);
+    const level = levelInfo(next.xp).level;
+    return { activity, xpGained: activity.xp, leveledUp: level > before, level, day: today };
+  }
+
+  /** Скасовує останній запис активності за день (за замовчуванням сьогодні). */
+  undoActivity(id: string, day?: string): number {
+    const activity = findActivity(id);
+    const current = this.save();
+    const today = day && isDateKey(day) ? day : this.today();
+    const entries = current.log[today] ?? [];
+    const index = entries.lastIndexOf(id);
+    if (!activity || index < 0) return 0;
+    this.commit({
+      ...current,
+      xp: Math.max(0, current.xp - activity.xp),
+      stats: { ...current.stats, [activity.stat]: Math.max(0, current.stats[activity.stat] - 1) },
+      log: { ...current.log, [today]: entries.filter((_, i) => i !== index) },
+    });
+    return activity.xp;
+  }
+
+  setLocation(location: LocationId): void {
+    if (this.save().location !== location) this.commit({ ...this.save(), location });
+  }
+
+  savePlace(id: PlaceId, lat: number, lon: number, radius = 150): void {
+    const current = this.save();
+    const place: Place = { id, lat, lon, radius };
+    this.commit({ ...current, places: [...current.places.filter((p) => p.id !== id), place] });
+  }
+
+  removePlace(id: PlaceId): void {
+    const current = this.save();
+    this.commit({ ...current, places: current.places.filter((p) => p.id !== id) });
+  }
+
+  setTracking(on: boolean): void {
+    this.commit({ ...this.save(), tracking: on });
   }
 
   // ---------- список справ ----------

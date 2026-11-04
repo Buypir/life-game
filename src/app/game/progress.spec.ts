@@ -100,7 +100,14 @@ describe('parseSave', () => {
       }),
     );
     expect(save.xp).toBe(120);
-    expect(save.stats).toEqual({ strength: 3, intellect: 0, energy: 0, discipline: 0, work: 0 });
+    expect(save.stats).toEqual({
+      strength: 3,
+      intellect: 0,
+      energy: 0,
+      discipline: 0,
+      work: 0,
+      love: 0,
+    });
     expect(save.days).toEqual({ '2026-11-04': ['wake'] });
     expect(save.sound).toBe(false);
   });

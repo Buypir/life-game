@@ -2,15 +2,19 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   ElementRef,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { CompleteResult, GameStateService } from '../game/game-state.service';
 import { daysLabel } from '../game/plural';
 import { Quest, Task } from '../game/quests';
+import { Activity, ACTIVITIES } from '../game/activities';
 import { SoundService } from '../game/sound.service';
+import { ArrivalEvent, arrivalText, TravelService } from '../game/travel.service';
 import { SceneComponent } from '../scene/scene.component';
 
 interface Popup {
@@ -21,8 +25,12 @@ interface Popup {
 interface Toast {
   id: number;
   text: string;
-  taskId: string;
+  actionLabel: string;
+  action: () => void;
 }
+
+/** Вкладка з активностями поруч із квестами. */
+export const MORE_TAB = 'more';
 
 @Component({
   selector: 'app-today',
@@ -33,6 +41,7 @@ interface Toast {
 export class TodayComponent {
   protected readonly game = inject(GameStateService);
   private readonly sound = inject(SoundService);
+  private readonly travel = inject(TravelService);
   private readonly scene = viewChild.required(SceneComponent);
   private readonly scenePanel = viewChild.required<ElementRef<HTMLElement>>('scenePanel');
 
@@ -42,9 +51,27 @@ export class TodayComponent {
   protected readonly popups = signal<Popup[]>([]);
   protected readonly banner = signal<string | null>(null);
   protected readonly toast = signal<Toast | null>(null);
+  protected readonly activities = ACTIVITIES;
+  protected readonly moreTab = MORE_TAB;
+  protected readonly activeActivity = signal<Activity | null>(null);
+  protected readonly lastActivity = signal<Activity | null>(null);
+  protected readonly activitiesToday = computed(() =>
+    [...this.game.activityCounts().values()].reduce((a, b) => a + b, 0),
+  );
   protected readonly selectedQuestId = signal(this.defaultQuestId());
 
   private nextId = 1;
+  /** Приїзди, що сталися до відкриття екрана, не програємо повторно. */
+  private seenArrival = this.travel.lastArrival()?.seq ?? 0;
+
+  constructor() {
+    effect(() => {
+      const event = this.travel.lastArrival();
+      if (!event || event.seq <= this.seenArrival) return;
+      this.seenArrival = event.seq;
+      untracked(() => void this.playArrival(event));
+    });
+  }
   private bannerTimer?: ReturnType<typeof setTimeout>;
   private toastTimer?: ReturnType<typeof setTimeout>;
 
@@ -99,8 +126,10 @@ export class TodayComponent {
   });
 
   protected readonly caption = computed(() => {
-    const active = this.activeTask();
+    const active = this.activeTask() ?? this.activeActivity();
     if (active) return `${active.doing}…`;
+    const lastActivity = this.lastActivity();
+    if (lastActivity) return lastActivity.done;
     const last = this.lastDone();
     if (last && this.game.doneToday().has(last.id)) return last.done;
     if (this.game.wentToBed()) return 'Герой спить. Добраніч!';
@@ -110,8 +139,10 @@ export class TodayComponent {
   });
 
   protected readonly captionDone = computed(() => {
+    if (this.activeTask() || this.activeActivity()) return false;
+    if (this.lastActivity()) return true;
     const last = this.lastDone();
-    return !this.activeTask() && !!last && this.game.doneToday().has(last.id);
+    return !!last && this.game.doneToday().has(last.id);
   });
 
   protected isDone(task: Task): boolean {
@@ -137,18 +168,96 @@ export class TodayComponent {
       this.banner.set(null);
       this.popups.set([]);
       this.beep('undo');
-      this.showToast(`Скасовано: ${task.title} (−${lost} XP)`, task.id);
+      this.showToast(`Скасовано: ${task.title} (−${lost} XP)`, 'Повернути', () =>
+        this.restore(task),
+      );
     } else {
       void this.perform(task);
     }
   }
 
-  protected restore(toast: Toast): void {
+  protected runToast(toast: Toast): void {
     this.toast.set(null);
-    const found = this.game.quests.flatMap((q) => q.tasks).find((t) => t.id === toast.taskId);
-    if (!found) return;
-    const result = this.game.complete(found.id);
-    if (result) this.celebrate(found, result);
+    toast.action();
+  }
+
+  private restore(task: Task): void {
+    const result = this.game.complete(task.id);
+    if (result) this.celebrate(task, result);
+  }
+
+  protected activityCount(activity: Activity): number {
+    return this.game.activityCounts().get(activity.id) ?? 0;
+  }
+
+  protected async performActivity(activity: Activity): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.toast.set(null);
+    this.beep('tap');
+    this.activeActivity.set(activity);
+    this.revealScene();
+    try {
+      await this.scene().playActivity(activity);
+      const result = this.game.doActivity(activity.id);
+      if (result) {
+        this.lastDone.set(null);
+        this.lastActivity.set(activity);
+        this.popXp(result.xpGained);
+        if (result.leveledUp) {
+          this.showBanner(`Новий рівень ${result.level}!`);
+          this.beep('level');
+        } else {
+          this.beep('complete');
+        }
+        this.showToast(`+${result.xpGained} XP · ${activity.title}`, 'Скасувати', () => {
+          this.game.undoActivity(activity.id);
+          this.lastActivity.set(null);
+          this.beep('undo');
+        });
+      }
+    } finally {
+      this.activeActivity.set(null);
+      this.busy.set(false);
+    }
+  }
+
+  /** Поїздку зараховано за GPS або автоматизацією — показуємо її в сцені. */
+  private async playArrival(event: ArrivalEvent): Promise<void> {
+    const { activity, day } = event.result;
+    const undo = () => {
+      this.game.undoActivity(activity.id, day);
+      this.beep('undo');
+    };
+    if (this.busy()) {
+      this.showToast(arrivalText(event), 'Скасувати', undo);
+      return;
+    }
+    this.busy.set(true);
+    this.toast.set(null);
+    this.activeActivity.set(activity);
+    try {
+      await this.scene().playActivity(activity);
+      this.lastDone.set(null);
+      this.lastActivity.set(activity);
+      this.popXp(event.result.xpGained);
+      if (event.result.leveledUp) {
+        this.showBanner(`Новий рівень ${event.result.level}!`);
+        this.beep('level');
+      } else {
+        this.beep('complete');
+      }
+      this.showToast(arrivalText(event), 'Скасувати', undo);
+    } finally {
+      this.activeActivity.set(null);
+      this.busy.set(false);
+    }
+  }
+
+  private popXp(xp: number): void {
+    const popup = { id: this.nextId++, text: `+${xp} XP` };
+    this.popups.set([popup]);
+    setTimeout(() => this.popups.update((list) => list.filter((p) => p.id !== popup.id)), 1400);
   }
 
   protected async perform(task: Task): Promise<void> {
@@ -183,9 +292,8 @@ export class TodayComponent {
 
   private celebrate(task: Task, result: CompleteResult): void {
     this.lastDone.set(task);
-    const popup = { id: this.nextId++, text: `+${result.xpGained} XP` };
-    this.popups.set([popup]);
-    setTimeout(() => this.popups.update((list) => list.filter((p) => p.id !== popup.id)), 1400);
+    this.lastActivity.set(null);
+    this.popXp(result.xpGained);
 
     if (result.leveledUp) {
       this.showBanner(`Новий рівень ${result.level}!`);
@@ -204,9 +312,9 @@ export class TodayComponent {
     this.bannerTimer = setTimeout(() => this.banner.set(null), 2400);
   }
 
-  private showToast(text: string, taskId: string): void {
+  private showToast(text: string, actionLabel: string, action: () => void): void {
     clearTimeout(this.toastTimer);
-    this.toast.set({ id: this.nextId++, text, taskId });
+    this.toast.set({ id: this.nextId++, text, actionLabel, action });
     this.toastTimer = setTimeout(() => this.toast.set(null), 5000);
   }
 

@@ -46,6 +46,7 @@
     <app-scene
       [sleeping]="game.asleep()"
       [breakfastDone]="game.breakfastDone()"
+      [location]="game.location()"
       [label]="caption()"
     />
     @for (p of popups(); track p.id) {
@@ -80,39 +81,112 @@
         <span class="tab-count">{{ p.done }}/{{ p.total }}</span>
       </button>
     }
+    <button
+      type="button"
+      role="tab"
+      class="tab"
+      [class.active]="selectedQuestId() === moreTab"
+      [attr.aria-selected]="selectedQuestId() === moreTab"
+      (click)="selectQuest(moreTab)"
+    >
+      <span>Ще</span>
+      <span class="tab-count">{{ activitiesToday() }}</span>
+    </button>
   </div>
 
-  <div class="task-list" role="tabpanel" [attr.aria-label]="'Квест: ' + quest().title">
-    @for (task of quest().tasks; track task.id) {
-      @let done = isDone(task);
-      <button
-        type="button"
-        class="task"
-        [class.done]="done"
-        [class.active]="task.id === nextTask()?.id"
-        [disabled]="busy()"
-        [attr.aria-label]="
-          done
-            ? task.title + ', виконано. Натисни, щоб скасувати'
-            : task.title + ', +' + task.xp + ' XP'
-        "
-        (click)="onTaskTap(task)"
-      >
-        <span class="check" aria-hidden="true">
-          @if (done) {
-            <svg viewBox="0 0 24 24" width="14" height="14" class="icon check-icon">
-              <path d="M5 12.5l4.5 4.5L19 7.5" />
-            </svg>
-          }
-        </span>
-        <span class="task-title">{{ task.title }}</span>
-        <span class="task-xp">+{{ task.xp }} XP</span>
-      </button>
-    }
-  </div>
+  @if (selectedQuestId() === moreTab) {
+    <div class="activity-grid" role="tabpanel" aria-label="Активності">
+      @for (a of activities; track a.id) {
+        <button
+          type="button"
+          class="activity"
+          [disabled]="busy()"
+          [attr.aria-label]="a.title + ', +' + a.xp + ' XP'"
+          (click)="performActivity(a)"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="22"
+            height="22"
+            aria-hidden="true"
+            class="icon activity-icon"
+          >
+            @switch (a.icon) {
+              @case ('chip') {
+                <rect x="7" y="7" width="10" height="10" rx="2" />
+                <path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" />
+              }
+              @case ('car') {
+                <path d="M5 13l1.5-4.2A2 2 0 0 1 8.4 7.5h7.2a2 2 0 0 1 1.9 1.3L19 13" />
+                <rect x="3.5" y="13" width="17" height="5" rx="2" />
+                <circle cx="7.5" cy="18.5" r="1.5" />
+                <circle cx="16.5" cy="18.5" r="1.5" />
+              }
+              @case ('laptop') {
+                <rect x="5" y="5" width="14" height="10" rx="1.5" />
+                <path d="M3 19h18" />
+              }
+              @case ('dumbbell') {
+                <path d="M6.5 7v10M17.5 7v10M4 9.5v5M20 9.5v5M6.5 12h11" />
+              }
+              @case ('heart') {
+                <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
+              }
+              @case ('dinner') {
+                <path d="M7 3v8M5 3v4a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 2-2 6 0 8v10" />
+              }
+              @default {
+                <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />
+              }
+            }
+          </svg>
+          <span class="activity-title">{{ a.title }}</span>
+          <span class="activity-meta">
+            +{{ a.xp }} XP
+            @if (activityCount(a) > 0) {
+              <span class="activity-count">· ×{{ activityCount(a) }}</span>
+            }
+          </span>
+        </button>
+      }
+    </div>
+  } @else {
+    <div class="task-list" role="tabpanel" [attr.aria-label]="'Квест: ' + quest().title">
+      @for (task of quest().tasks; track task.id) {
+        @let done = isDone(task);
+        <button
+          type="button"
+          class="task"
+          [class.done]="done"
+          [class.active]="task.id === nextTask()?.id"
+          [disabled]="busy()"
+          [attr.aria-label]="
+            done
+              ? task.title + ', виконано. Натисни, щоб скасувати'
+              : task.title + ', +' + task.xp + ' XP'
+          "
+          (click)="onTaskTap(task)"
+        >
+          <span class="check" aria-hidden="true">
+            @if (done) {
+              <svg viewBox="0 0 24 24" width="14" height="14" class="icon check-icon">
+                <path d="M5 12.5l4.5 4.5L19 7.5" />
+              </svg>
+            }
+          </span>
+          <span class="task-title">{{ task.title }}</span>
+          <span class="task-xp">+{{ task.xp }} XP</span>
+        </button>
+      }
+    </div>
+  }
 </section>
 
-@if (nextTask(); as t) {
+@if (selectedQuestId() === moreTab) {
+  <p class="small-note more-hint">
+    Активності можна повторювати. Поїздки зараховуються й самі — за GPS (див. «Герой» → «Місця»).
+  </p>
+} @else if (nextTask(); as t) {
   <button type="button" class="btn-primary" [disabled]="busy()" (click)="perform(t)">
     {{ busy() ? 'Виконується…' : 'Готово: ' + t.title.toLowerCase() }}
   </button>
@@ -129,6 +203,6 @@
 @if (toast(); as t) {
   <div class="toast" role="status">
     <span>{{ t.text }}</span>
-    <button type="button" (click)="restore(t)">Повернути</button>
+    <button type="button" (click)="runToast(t)">{{ t.actionLabel }}</button>
   </div>
 }

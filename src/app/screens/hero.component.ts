@@ -1,10 +1,20 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { PLACE_LABELS, PlaceId } from '../game/activities';
 import { GameStateService } from '../game/game-state.service';
+import { TravelService } from '../game/travel.service';
+import { RemindersService } from '../reminders/reminders.service';
 import { daysLabel } from '../game/plural';
 import { STAT_LABELS, STAT_ORDER } from '../game/quests';
 import { HeroSpriteComponent } from '../scene/hero-sprite.component';
 
 const WEEKDAYS = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const PLACE_ORDER: PlaceId[] = ['home', 'office', 'gym'];
+/** Місце у формі «де?» для статусу перевірки. */
+const PLACE_WHERE: Record<PlaceId, string> = {
+  home: 'вдома',
+  office: 'в офісі',
+  gym: 'у спортзалі',
+};
 
 @Component({
   selector: 'app-hero',
@@ -14,6 +24,8 @@ const WEEKDAYS = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 })
 export class HeroComponent {
   protected readonly game = inject(GameStateService);
+  protected readonly travel = inject(TravelService);
+  private readonly reminders = inject(RemindersService);
   protected readonly confirmReset = signal(false);
   protected readonly streakText = computed(() => daysLabel(this.game.streak()));
   protected readonly bestText = computed(() => daysLabel(this.game.bestStreak()));
@@ -51,6 +63,99 @@ export class HeroComponent {
       return false;
     }
   })();
+
+  // ---------- місця й поїздки ----------
+
+  protected readonly savingPlace = signal<PlaceId | null>(null);
+  protected readonly placeError = signal<string | null>(null);
+  protected readonly serverReady = computed(() => this.reminders.status() === 'on');
+  protected readonly linkBusy = signal(false);
+  protected readonly linkError = signal<string | null>(null);
+  protected readonly copiedPlace = signal<PlaceId | null>(null);
+
+  protected readonly placeRows = computed(() => {
+    const saved = this.game.places();
+    const here = this.game.location();
+    return PLACE_ORDER.map((id) => {
+      const place = saved.find((p) => p.id === id);
+      return {
+        id,
+        label: PLACE_LABELS[id],
+        saved: !!place,
+        radius: place?.radius ?? 0,
+        here: here === id,
+      };
+    });
+  });
+
+  protected readonly arrivalUrls = computed(() => {
+    const base = this.travel.arrivalLink();
+    return base
+      ? PLACE_ORDER.map((id) => ({ id, label: PLACE_LABELS[id], url: `${base}/${id}` }))
+      : [];
+  });
+
+  protected readonly checkText = computed(() => {
+    const state = this.travel.check();
+    const time = (d: Date) => d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+    switch (state.kind) {
+      case 'checking':
+        return 'Визначаю місце…';
+      case 'at':
+        return `${time(state.time)} — ти ${PLACE_WHERE[state.place]}.`;
+      case 'away':
+        return `${time(state.time)} — поза збереженими місцями (мабуть, у дорозі).`;
+      case 'error':
+        return state.message;
+      default:
+        return null;
+    }
+  });
+
+  protected async saveHere(id: PlaceId): Promise<void> {
+    if (this.savingPlace()) return;
+    this.savingPlace.set(id);
+    this.placeError.set(null);
+    try {
+      this.placeError.set(await this.travel.saveHere(id));
+    } finally {
+      this.savingPlace.set(null);
+    }
+  }
+
+  protected removePlace(id: PlaceId): void {
+    this.game.removePlace(id);
+  }
+
+  protected toggleTracking(): void {
+    const on = !this.game.tracking();
+    this.game.setTracking(on);
+    if (on) void this.travel.checkNow();
+  }
+
+  protected checkNow(): void {
+    void this.travel.checkNow();
+  }
+
+  protected async createLink(): Promise<void> {
+    if (this.linkBusy()) return;
+    this.linkBusy.set(true);
+    try {
+      this.linkError.set(await this.travel.createArrivalLink());
+    } finally {
+      this.linkBusy.set(false);
+    }
+  }
+
+  protected async copyUrl(id: PlaceId, url: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url);
+      this.copiedPlace.set(id);
+      setTimeout(() => this.copiedPlace.set(null), 2000);
+    } catch {
+      this.copiedPlace.set(null);
+    }
+  }
 
   protected readonly backupMessage = signal<string | null>(null);
   protected readonly pendingImport = signal<string | null>(null);

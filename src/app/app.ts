@@ -3,10 +3,13 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { GameStateService } from './game/game-state.service';
+import { arrivalText, TravelService } from './game/travel.service';
 import { RemindersService } from './reminders/reminders.service';
 import { HeroComponent } from './screens/hero.component';
 import { RemindersComponent } from './screens/reminders.component';
@@ -26,7 +29,11 @@ export class App {
   private readonly game = inject(GameStateService);
   // сервіс нагадувань стартує разом із застосунком: він синхронізує прогрес із сервером
   private readonly reminders = inject(RemindersService);
+  private readonly travel = inject(TravelService);
   protected readonly screen = signal<Screen>(initialScreen());
+  /** Повідомлення про поїздку, коли користувач не на екрані «Сьогодні» (там її показує сцена). */
+  protected readonly notice = signal<string | null>(null);
+  private noticeTimer?: ReturnType<typeof setTimeout>;
 
   /** Скільки справ на сьогодні (і прострочених) ще не виконано — для значка в меню. */
   protected readonly todosBadge = computed(() => {
@@ -37,14 +44,39 @@ export class App {
   constructor() {
     // новий день починається опівночі, навіть якщо застосунок не закривали
     const refresh = () => this.game.refreshDay();
-    const onVisible = () => {
-      if (!document.hidden) refresh();
-    };
     const timer = setInterval(refresh, 60_000);
+
+    // поїздки: черга з сервера + GPS — при відкритті, поверненні й раз на 3 хв, поки застосунок на екрані
+    const travel = () => {
+      if (!document.hidden) void this.travel.refresh();
+    };
+    const travelTimer = setInterval(() => {
+      if (this.game.tracking()) travel();
+    }, 180_000);
+    setTimeout(travel, 800);
+
+    const onVisible = () => {
+      if (document.hidden) return;
+      refresh();
+      travel();
+    };
     document.addEventListener('visibilitychange', onVisible);
     inject(DestroyRef).onDestroy(() => {
       clearInterval(timer);
+      clearInterval(travelTimer);
+      clearTimeout(this.noticeTimer);
       document.removeEventListener('visibilitychange', onVisible);
+    });
+
+    let seen = 0;
+    effect(() => {
+      const event = this.travel.lastArrival();
+      if (!event || event.seq <= seen) return;
+      seen = event.seq;
+      if (untracked(() => this.screen()) === 'today') return;
+      this.notice.set(arrivalText(event));
+      clearTimeout(this.noticeTimer);
+      this.noticeTimer = setTimeout(() => this.notice.set(null), 5000);
     });
   }
 

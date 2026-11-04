@@ -15,6 +15,13 @@
   }
 </main>
 
+@if (notice(); as text) {
+  <div class="toast" role="status">
+    <span>{{ text }}</span>
+    <button type="button" (click)="notice.set(null); go('today')">Глянути</button>
+  </div>
+}
+
 <nav class="nav" aria-label="Розділи">
   <button
     type="button"

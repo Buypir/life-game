@@ -37,7 +37,7 @@ export function rrect(
   y: number,
   w: number,
   h: number,
-  r: number,
+  r: number | number[],
   fill: string,
   stroke?: string,
 ): void {
@@ -52,14 +52,14 @@ export function rrect(
   }
 }
 
-function circle(ctx: Ctx, x: number, y: number, r: number, fill: string): void {
+export function circle(ctx: Ctx, x: number, y: number, r: number, fill: string): void {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
 }
 
-function capsule(ctx: Ctx, a: Vec, b: Vec, width: number, color: string): void {
+export function capsule(ctx: Ctx, a: Vec, b: Vec, width: number, color: string): void {
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
@@ -329,7 +329,18 @@ export interface FlatPose {
   props?: Prop[];
 }
 
-export type Prop = 'brush' | 'foam' | 'drops' | 'sandwich' | 'book';
+export type Prop = 'brush' | 'foam' | 'drops' | 'sandwich' | 'book' | 'dumbbells';
+
+/** Зовнішність персонажа: герой або дівчина. */
+export interface Look {
+  shirt: string;
+  pants: string;
+  hair: string;
+  long: boolean;
+}
+
+export const HERO_LOOK: Look = { shirt: C.accent, pants: '#2A2F45', hair: C.ink, long: false };
+export const GIRL_LOOK: Look = { shirt: '#EC4899', pants: '#3B3F5C', hair: '#6B3E26', long: true };
 
 export const STAND: FlatPose = {
   handL: { x: 3, y: 26 },
@@ -365,19 +376,24 @@ interface HeadOptions {
   eyes: 'open' | 'closed';
   mouth: 'smile' | 'open' | 'none';
   rotate?: number;
+  hair?: string;
+  long?: boolean;
 }
 
 function drawHead(ctx: Ctx, c: Vec, r: number, o: HeadOptions): void {
   ctx.save();
   ctx.translate(c.x, c.y);
   if (o.rotate) ctx.rotate(o.rotate);
+  const hair = o.hair ?? C.ink;
+  // довге волосся позаду голови
+  if (o.long) rrect(ctx, -r - 2, -r * 0.4, r * 2 + 4, r * 1.9, [4, 4, 8, 8], hair);
   circle(ctx, 0, 0, r, C.skin);
   // волосся: шапочка зверху
   ctx.beginPath();
   ctx.moveTo(-r, -1);
   ctx.arc(0, 0, r, Math.PI, 0);
   ctx.quadraticCurveTo(r * 0.3, -r * 0.55, -r, -1);
-  ctx.fillStyle = C.ink;
+  ctx.fillStyle = hair;
   ctx.fill();
   const ey = r * 0.12;
   if (o.eyes === 'closed') {
@@ -405,7 +421,13 @@ function drawHead(ctx: Ctx, c: Vec, r: number, o: HeadOptions): void {
 }
 
 /** Малює героя: x — центр, groundY — лінія стоп. */
-export function drawHero(ctx: Ctx, x: number, groundY: number, pose: FlatPose): void {
+export function drawHero(
+  ctx: Ctx,
+  x: number,
+  groundY: number,
+  pose: FlatPose,
+  look: Look = HERO_LOOK,
+): void {
   const lift = pose.lift ?? 0;
   const bob = pose.bob ?? 0;
   const hipY = groundY - LEG - lift;
@@ -418,15 +440,20 @@ export function drawHero(ctx: Ctx, x: number, groundY: number, pose: FlatPose): 
     const foot = side < 0 ? pose.footL : pose.footR;
     const hip = { x: x + side * 6, y: hipY };
     const end = { x: hip.x + side * foot.x, y: groundY - lift - foot.y - 3 };
-    capsule(ctx, hip, end, 8, '#2A2F45');
+    capsule(ctx, hip, end, 8, look.pants);
     rrect(ctx, end.x - 5 + side * 1.5, end.y + 1, 10, 4, 2, C.ink);
   }
 
   // тулуб
-  rrect(ctx, x - 15, top, 30, hipY - top + 4, 12, C.accent);
+  rrect(ctx, x - 15, top, 30, hipY - top + 4, 12, look.shirt);
   rrect(ctx, x - 4, top + 9, 8, 4, 2, 'rgba(255,255,255,0.85)');
 
-  drawHead(ctx, head, 13, { eyes: pose.eyes ?? 'open', mouth: pose.mouth ?? 'smile' });
+  drawHead(ctx, head, 13, {
+    eyes: pose.eyes ?? 'open',
+    mouth: pose.mouth ?? 'smile',
+    hair: look.hair,
+    long: look.long,
+  });
 
   // руки
   const hands: Vec[] = [];
@@ -435,7 +462,7 @@ export function drawHero(ctx: Ctx, x: number, groundY: number, pose: FlatPose): 
     const shoulder = { x: x + side * 12, y: shoulderY };
     const hand = { x: shoulder.x + side * target.x, y: shoulder.y + target.y };
     const elbow = ik(shoulder, hand, side);
-    capsule(ctx, shoulder, elbow, 7.5, C.accent);
+    capsule(ctx, shoulder, elbow, 7.5, look.shirt);
     capsule(ctx, elbow, hand, 6, C.skin);
     circle(ctx, hand.x, hand.y, 3.6, C.skin);
     hands.push(hand);
@@ -475,6 +502,13 @@ function drawProp(ctx: Ctx, prop: Prop, head: Vec, handL: Vec, handR: Vec): void
       rrect(ctx, handR.x - 5, handR.y - 6, 10, 3, 1.5, C.bread);
       rrect(ctx, handR.x - 5, handR.y - 3.5, 10, 2, 1, C.leaf);
       rrect(ctx, handR.x - 5, handR.y - 1.5, 10, 3, 1.5, C.bread);
+      break;
+    case 'dumbbells':
+      for (const h of [handL, handR]) {
+        capsule(ctx, { x: h.x - 6, y: h.y }, { x: h.x + 6, y: h.y }, 2, '#6B7280');
+        rrect(ctx, h.x - 9, h.y - 4, 4, 8, 1.5, C.ink);
+        rrect(ctx, h.x + 5, h.y - 4, 4, 8, 1.5, C.ink);
+      }
       break;
     case 'book':
       rrect(

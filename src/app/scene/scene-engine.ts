@@ -1,3 +1,4 @@
+import { Activity, ActivityAction, LocationId, PLACE_LABELS, PlaceId } from '../game/activities';
 import { ActionKind, Spot } from '../game/quests';
 import {
   drawDesk,
@@ -13,14 +14,27 @@ import {
   drawWater,
   FlatPose,
   FLOOR_Y,
+  GIRL_LOOK,
   SCENE_H,
   SCENE_W,
   SPOT_X,
   STAND,
   timeOfDay,
 } from './flat';
+import {
+  drawCafe,
+  drawCafeTable,
+  drawCar,
+  drawDevBoard,
+  drawGym,
+  drawHearts,
+  drawOffice,
+  drawOfficeDesk,
+  drawPark,
+  drawRoad,
+} from './locations';
 
-/** Скільки триває кожна анімація, мс. */
+/** Скільки триває кожна анімація щоденних справ, мс. */
 export const ACTION_DURATION: Record<ActionKind, number> = {
   wake: 3000,
   brush: 2800,
@@ -32,12 +46,35 @@ export const ACTION_DURATION: Record<ActionKind, number> = {
   sleep: 2600,
 };
 
+/** Скільки триває кожна анімація активностей, мс. */
+export const ACTIVITY_DURATION: Record<ActivityAction, number> = {
+  embedded: 3200,
+  drive: 3600,
+  type: 3000,
+  lift: 3200,
+  'date-walk': 3800,
+  'date-dinner': 3600,
+};
+
 /** Частина «Прокинутись», поки герой ще лежить. */
 const WAKE_IN_BED_MS = 1000;
 /** Частина «Лягти спати», поки герой ще стоїть і позіхає. */
 const SLEEP_STAND_MS = 1100;
 const WALK_SPEED = 95; // одиниць сцени за секунду
 const SPARKLE_MS = 900;
+const FADE_MS = 380;
+/** Звідки герой заходить у нову локацію. */
+const ENTRY_X = 24;
+/** Де герой стоїть у кожній локації. */
+const STAND_X: Record<LocationId, number> = {
+  home: SPOT_X.bed,
+  office: 171,
+  gym: 165,
+  road: 150,
+  park: 140,
+  cafe: 132,
+};
+const GIRL_X: Partial<Record<LocationId, number>> = { park: 174, cafe: 188 };
 
 type Mode = 'sleep' | 'idle' | 'walk' | 'act';
 
@@ -47,7 +84,7 @@ export interface SceneFlags {
 }
 
 /**
- * Невеликий ігровий рушій: тримає стан героя, рухає його по кімнаті
+ * Невеликий ігровий рушій: тримає стан героя, рухає його між локаціями
  * й малює кадри на canvas через requestAnimationFrame.
  */
 export class SceneEngine {
@@ -56,14 +93,20 @@ export class SceneEngine {
   private bgStamp = '';
 
   private mode: Mode = 'idle';
+  private loc: LocationId = 'home';
   private heroX: number = SPOT_X.bed;
   private walkTarget = 0;
   private walkDone?: () => void;
   private action: ActionKind | null = null;
+  private activity: ActivityAction | null = null;
+  private driveTo: PlaceId = 'office';
   private actionStart = 0;
   private actionDone?: () => void;
   private wakeFromBed = false;
   private sparkleUntil = 0;
+  private fadeStart = -1e9;
+  /** Час, що минув у русі (для прокручування фону дороги й парку). */
+  private scroll = 0;
   private flags: SceneFlags = { breakfastDone: false };
 
   private raf = 0;
@@ -110,6 +153,7 @@ export class SceneEngine {
   setSleeping(sleeping: boolean): void {
     if (this.busy) return;
     if (sleeping) {
+      this.switchTo('home', false);
       this.mode = 'sleep';
       this.heroX = SPOT_X.bed;
     } else if (this.mode === 'sleep') {
@@ -117,12 +161,24 @@ export class SceneEngine {
     }
   }
 
+  /** Миттєво переносить героя (напр. після відкриття гри або визначення місця за GPS). */
+  setLocation(location: LocationId): void {
+    if (this.busy || location === this.loc || location === 'road') return;
+    if (this.mode === 'sleep' && location !== 'home') this.mode = 'idle';
+    this.switchTo(location, true);
+    this.heroX = STAND_X[location];
+  }
+
   setFlags(flags: Partial<SceneFlags>): void {
     this.flags = { ...this.flags, ...flags };
   }
 
-  /** Програє дію: герой іде до потрібного місця, виконує її й повертається в очікування. */
+  /** Щоденна справа вдома: герой іде до потрібного місця, виконує її й повертається в очікування. */
   async play(action: ActionKind, spot: Spot): Promise<void> {
+    if (this.loc !== 'home') {
+      this.switchTo('home', true);
+      this.heroX = SPOT_X.bed;
+    }
     if (action === 'wake') {
       if (this.mode === 'sleep') {
         this.wakeFromBed = true;
@@ -137,15 +193,65 @@ export class SceneEngine {
       }
       await this.walkTo(SPOT_X[spot]);
     }
-    await this.runAction(action);
+    await this.run(() => {
+      if (action === 'wake') this.heroX = SPOT_X.bed;
+      this.action = action;
+    });
     if (action !== 'sleep') this.sparkleUntil = performance.now() + SPARKLE_MS;
+  }
+
+  /** Активність: поїздка, офіс, зал, побачення, embedded. */
+  async playActivity(activity: Activity): Promise<void> {
+    if (this.mode === 'sleep') {
+      this.mode = 'idle';
+      this.heroX = SPOT_X.bed;
+    }
+    const { location, action } = activity;
+    if (action === 'drive' && activity.to) {
+      this.driveTo = activity.to;
+      this.switchTo('road', true);
+      await this.run(() => (this.activity = action));
+      this.switchTo(activity.to, true);
+      this.heroX = activity.to === 'home' ? SPOT_X.desk + 60 : ENTRY_X;
+      await this.walkTo(STAND_X[activity.to]);
+    } else if (location === 'home') {
+      if (this.loc !== 'home') {
+        this.switchTo('home', true);
+        this.heroX = SPOT_X.bed;
+      }
+      await this.walkTo(SPOT_X.desk);
+      await this.run(() => (this.activity = action));
+    } else if (location === 'office' || location === 'gym') {
+      if (this.loc !== location) {
+        this.switchTo(location, true);
+        this.heroX = ENTRY_X;
+      }
+      await this.walkTo(STAND_X[location]);
+      await this.run(() => (this.activity = action));
+    } else {
+      this.switchTo(location, true);
+      this.heroX = STAND_X[location];
+      await this.run(() => (this.activity = action));
+    }
+    this.sparkleUntil = performance.now() + SPARKLE_MS;
   }
 
   /** Герой повертається в ліжко й засинає (коли «Лягти спати» вже виконано). */
   async goToBed(): Promise<void> {
     if (this.mode === 'sleep') return;
+    if (this.loc !== 'home') {
+      this.switchTo('home', true);
+      this.heroX = SPOT_X.desk;
+    }
     await this.walkTo(SPOT_X.bed);
     this.mode = 'sleep';
+  }
+
+  private switchTo(location: LocationId, fade: boolean): void {
+    if (location === this.loc) return;
+    this.loc = location;
+    this.bgStamp = '';
+    if (fade) this.fadeStart = performance.now();
   }
 
   private walkTo(x: number): Promise<void> {
@@ -160,14 +266,20 @@ export class SceneEngine {
     });
   }
 
-  private runAction(action: ActionKind): Promise<void> {
+  private run(setup: () => void): Promise<void> {
     return new Promise((resolve) => {
-      if (action === 'wake') this.heroX = SPOT_X.bed;
+      this.action = null;
+      this.activity = null;
+      setup();
       this.mode = 'act';
-      this.action = action;
       this.actionStart = performance.now();
       this.actionDone = resolve;
     });
+  }
+
+  private duration(): number {
+    if (this.activity) return ACTIVITY_DURATION[this.activity];
+    return this.action ? ACTION_DURATION[this.action] : 0;
   }
 
   private tick(now: number): void {
@@ -187,10 +299,12 @@ export class SceneEngine {
         this.walkDone = undefined;
         done?.();
       }
-    } else if (this.mode === 'act' && this.action) {
-      if (now - this.actionStart >= ACTION_DURATION[this.action]) {
+    } else if (this.mode === 'act') {
+      if (this.activity === 'drive' || this.activity === 'date-walk') this.scroll += dt * 1000;
+      if (now - this.actionStart >= this.duration()) {
         this.mode = this.action === 'sleep' ? 'sleep' : 'idle';
         this.action = null;
+        this.activity = null;
         this.wakeFromBed = false;
         const done = this.actionDone;
         this.actionDone = undefined;
@@ -217,26 +331,77 @@ export class SceneEngine {
     return width / SCENE_W;
   }
 
-  private ensureBackground(scale: number): void {
+  /** Нерухомі фони кешуються в окремому полотні й оновлюються раз на хвилину. */
+  private drawStaticBackground(scale: number): void {
     const now = this.clock();
-    const stamp = `${now.getHours()}:${now.getMinutes()}:${this.bg.width}`;
-    if (stamp === this.bgStamp) return;
-    this.bgStamp = stamp;
-    const bctx = this.bg.getContext('2d');
-    if (!bctx) return;
-    bctx.setTransform(scale, 0, 0, scale, 0, 0);
-    drawRoom(bctx, now);
+    const stamp = `${this.loc}:${now.getHours()}:${now.getMinutes()}:${this.bg.width}`;
+    if (stamp !== this.bgStamp) {
+      this.bgStamp = stamp;
+      const bctx = this.bg.getContext('2d');
+      if (bctx) {
+        bctx.setTransform(scale, 0, 0, scale, 0, 0);
+        if (this.loc === 'office') drawOffice(bctx, now);
+        else if (this.loc === 'gym') drawGym(bctx);
+        else if (this.loc === 'cafe') drawCafe(bctx, now);
+        else drawRoom(bctx, now);
+      }
+    }
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.drawImage(this.bg, 0, 0);
   }
 
   private render(now: number): void {
     const scale = this.resize();
-    this.ensureBackground(scale);
     const ctx = this.ctx;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.bg, 0, 0);
+    const elapsed = now - this.actionStart;
+    const date = this.clock();
+    const animated = this.loc === 'road' || this.loc === 'park';
+
+    if (!animated) this.drawStaticBackground(scale);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
-    const elapsed = now - this.actionStart;
+    switch (this.loc) {
+      case 'road':
+        drawRoad(ctx, date, this.scroll, PLACE_LABELS[this.driveTo]);
+        drawCar(ctx, 140 + Math.sin(now / 1400) * 6, this.mode === 'act' ? now : 0);
+        break;
+      case 'park': {
+        drawPark(ctx, date, this.scroll);
+        this.drawCouple(now, elapsed);
+        if (this.activity === 'date-walk') drawHearts(ctx, 157, 70, now);
+        break;
+      }
+      case 'cafe':
+        this.drawCouple(now, elapsed);
+        drawCafeTable(ctx, now);
+        if (this.activity === 'date-dinner') drawHearts(ctx, 160, 92, now);
+        break;
+      case 'office':
+        drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
+        drawOfficeDesk(ctx, this.activity === 'type', now);
+        break;
+      case 'gym':
+        drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
+        break;
+      default:
+        this.renderHome(now, elapsed);
+    }
+
+    const sparkleLeft = this.sparkleUntil - now;
+    if (sparkleLeft > 0 && this.mode !== 'sleep' && this.loc !== 'road') {
+      drawSparkles(ctx, this.heroX, FLOOR_Y - 50, now, sparkleLeft / SPARKLE_MS);
+    }
+    if (timeOfDay(date.getHours()) === 'night') drawNightTint(ctx);
+
+    const fade = 1 - (now - this.fadeStart) / FADE_MS;
+    if (fade > 0) {
+      ctx.fillStyle = `rgba(245, 246, 248, ${fade.toFixed(3)})`;
+      ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+    }
+  }
+
+  private renderHome(now: number, elapsed: number): void {
+    const ctx = this.ctx;
     const inBed =
       this.mode === 'sleep' ||
       (this.mode === 'act' &&
@@ -259,20 +424,56 @@ export class SceneEngine {
       drawHero(ctx, this.heroX, FLOOR_Y, this.pose(now, elapsed));
     }
 
-    // передній план: стіл і те, що на ньому
     drawDesk(ctx);
     const acting = this.mode === 'act' ? this.action : null;
-    drawLaptop(ctx, acting === 'type', now);
-    if (acting === 'eat') drawPlate(ctx, true);
+    const embedded = this.mode === 'act' && this.activity === 'embedded';
+    drawLaptop(ctx, acting === 'type' || embedded, now);
+    if (embedded) drawDevBoard(ctx, now, true);
+    else if (acting === 'eat') drawPlate(ctx, true);
     else if (this.flags.breakfastDone) drawPlate(ctx, false);
     if (acting === 'wash') drawWater(ctx, now);
+  }
 
-    const sparkleLeft = this.sparkleUntil - now;
-    if (!inBed && sparkleLeft > 0) {
-      drawSparkles(ctx, this.heroX, FLOOR_Y - 50, now, sparkleLeft / SPARKLE_MS);
+  /** Герой і дівчина поруч: у парку йдуть за руку, у кафе вечеряють. */
+  private drawCouple(now: number, elapsed: number): void {
+    const girlX = GIRL_X[this.loc] ?? this.heroX + 34;
+    const acting = this.mode === 'act';
+    let hero: FlatPose;
+    let girl: FlatPose;
+    if (this.loc === 'park') {
+      const s = acting ? Math.sin((now / 300) * Math.PI) : 0;
+      const legs = (phase: number) => ({
+        footL: { x: 0, y: Math.max(0, phase) * 4 },
+        footR: { x: 0, y: Math.max(0, -phase) * 4 },
+      });
+      hero = { ...STAND, ...legs(s), handR: { x: 5, y: 22 }, handL: { x: 3 + s * 2, y: 25 } };
+      girl = { ...STAND, ...legs(-s), handL: { x: 5, y: 22 }, handR: { x: 3 - s * 2, y: 25 } };
+      if (acting) {
+        hero.bob = Math.abs(s) * -1.2;
+        girl.bob = Math.abs(s) * -1.2;
+      }
+    } else {
+      const atTable = { x: -4, y: 17 };
+      const toMouth = { x: -9, y: -9 };
+      const heroBite = acting && Math.floor(elapsed / 900) % 2 === 1;
+      const girlBite = acting && Math.floor((elapsed + 450) / 900) % 2 === 1;
+      hero = {
+        ...STAND,
+        handL: atTable,
+        handR: heroBite ? toMouth : atTable,
+        mouth: heroBite ? 'none' : 'smile',
+      };
+      girl = {
+        ...STAND,
+        handR: atTable,
+        handL: girlBite ? toMouth : atTable,
+        mouth: girlBite ? 'none' : 'smile',
+      };
     }
-
-    if (timeOfDay(this.clock().getHours()) === 'night') drawNightTint(ctx);
+    girl.eyes = now % 4100 < 140 ? 'closed' : 'open';
+    hero.eyes = now % 3600 < 140 ? 'closed' : 'open';
+    drawHero(this.ctx, this.heroX, FLOOR_Y, hero);
+    drawHero(this.ctx, girlX, FLOOR_Y, girl, GIRL_LOOK);
   }
 
   private pose(now: number, elapsed: number): FlatPose {
@@ -287,6 +488,43 @@ export class SceneEngine {
         footR: { x: 0, y: Math.max(0, -s) * 4 },
         bob: Math.abs(s) * -1.5,
       };
+    }
+
+    if (this.mode === 'act' && this.activity) {
+      switch (this.activity) {
+        case 'embedded': {
+          const tap = Math.floor(elapsed / 220) % 2;
+          return {
+            ...STAND,
+            handL: { x: -6, y: 19 + tap },
+            handR: { x: -6, y: 20 - tap },
+            headDown: 2,
+            mouth: 'none',
+          };
+        }
+        case 'type': {
+          const tap = Math.floor(elapsed / 130) % 2;
+          return {
+            ...STAND,
+            handL: { x: -5, y: 17 + tap * 1.5 },
+            handR: { x: -5, y: 18.5 - tap * 1.5 },
+            mouth: 'none',
+          };
+        }
+        case 'lift': {
+          const up = Math.max(0, Math.sin((elapsed / 800) * Math.PI * 2));
+          return {
+            ...STAND,
+            handL: { x: 7 + up * 4, y: 4 - up * 26 },
+            handR: { x: 7 + up * 4, y: 4 - up * 26 },
+            mouth: up > 0.6 ? 'open' : 'none',
+            eyes: up > 0.8 ? 'closed' : 'open',
+            props: ['dumbbells'],
+          };
+        }
+        default:
+          break;
+      }
     }
 
     if (this.mode === 'act' && this.action) {

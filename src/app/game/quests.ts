@@ -4,7 +4,7 @@ export type ActionKind = 'wake' | 'brush' | 'wash' | 'eat' | 'type' | 'study' | 
 /** Місце в кімнаті, куди герой іде перед дією. */
 export type Spot = 'bed' | 'desk' | 'sink';
 
-export type StatKey = 'strength' | 'intellect' | 'energy' | 'discipline' | 'work';
+export type StatKey = 'strength' | 'intellect' | 'energy' | 'discipline' | 'work' | 'love';
 
 export interface Task {
   id: string;
@@ -169,9 +169,17 @@ export const STAT_LABELS: Record<StatKey, string> = {
   energy: 'Енергія',
   discipline: 'Дисципліна',
   work: 'Робота',
+  love: 'Стосунки',
 };
 
-export const STAT_ORDER: StatKey[] = ['strength', 'intellect', 'energy', 'discipline', 'work'];
+export const STAT_ORDER: StatKey[] = [
+  'strength',
+  'intellect',
+  'energy',
+  'discipline',
+  'work',
+  'love',
+];
 
 const TASK_INDEX = new Map<string, { task: Task; quest: Quest }>();
 for (const quest of QUESTS) {

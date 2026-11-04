@@ -25,6 +25,11 @@ public static class PushApi
         api.MapPut("/subscriptions/{id}/events", EventsAsync);
         api.MapPost("/subscriptions/{id}/test", TestAsync);
         api.MapDelete("/subscriptions/{id}", DeleteAsync);
+
+        // приїзди з геозон iOS Shortcuts
+        api.MapPost("/subscriptions/{id}/arrival-key", ArrivalKeyAsync);
+        api.MapPost("/subscriptions/{id}/arrivals/claim", ClaimArrivalsAsync);
+        api.MapPost("/arrive/{key}/{place}", ArriveAsync);
         return app;
     }
 
@@ -61,6 +66,10 @@ public static class PushApi
             Auth = sub.Auth,
             TimeZone = request.TimeZone!,
             Reminders = request.Reminders ?? [],
+            // ключ приїздів і незабрані приїзди переживають перепідписку того самого браузера
+            ArrivalKeyHash = existing?.ArrivalKeyHash,
+            Arrivals = existing?.Arrivals ?? [],
+            LastArrival = existing?.LastArrival,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -159,6 +168,82 @@ public static class PushApi
         if (Authorize(id, http, store) is { } denied) return denied;
         await store.RemoveAsync(id, ct);
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Видає новий ключ приїздів (старий перестає працювати). Ключ іде в URL автоматизації
+    /// Shortcuts і вміє лише відмічати приїзди, тому секрет підписки з телефону не виходить.
+    /// </summary>
+    private static async Task<IResult> ArrivalKeyAsync(
+        string id, HttpContext http, SubscriptionStore store, TimeProvider time, CancellationToken ct)
+    {
+        if (Authorize(id, http, store) is { } denied) return denied;
+        var key = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(24));
+        var updated = await store.UpdateAsync(id, s => s with
+        {
+            ArrivalKeyHash = Hash(key),
+            UpdatedAt = time.GetUtcNow(),
+        }, ct);
+        return updated is null ? Results.NotFound() : Results.Ok(new ArrivalKeyResponse(key));
+    }
+
+    /// <summary>Віддає незабрані приїзди й очищає чергу.</summary>
+    private static async Task<IResult> ClaimArrivalsAsync(
+        string id, HttpContext http, SubscriptionStore store, CancellationToken ct)
+    {
+        if (Authorize(id, http, store) is { } denied) return denied;
+        Arrival[] claimed = [];
+        var updated = await store.UpdateAsync(id, s =>
+        {
+            claimed = s.Arrivals;
+            return claimed.Length == 0 ? s : s with { Arrivals = [] };
+        }, ct);
+        return updated is null ? Results.NotFound() : Results.Ok(new ArrivalsResponse(claimed));
+    }
+
+    /// <summary>
+    /// Викликає автоматизація iOS «Коли я прибуваю…» → «Отримати вміст URL» (POST).
+    /// Приїзд стає в чергу, а на телефон приходить сповіщення.
+    /// </summary>
+    private static async Task<IResult> ArriveAsync(
+        string key,
+        string place,
+        SubscriptionStore store,
+        IPushSender sender,
+        TimeProvider time,
+        ILoggerFactory loggers,
+        CancellationToken ct)
+    {
+        var record = string.IsNullOrEmpty(key) ? null : store.FindByArrivalKey(Hash(key));
+        if (record is null) return Results.NotFound();
+        var normalized = ArrivalPlanner.NormalizePlace(place);
+        if (normalized is null) return BadRequest("Place must be home, office or gym");
+
+        var accepted = false;
+        var updated = await store.UpdateAsync(record.Id, s =>
+        {
+            var next = ArrivalPlanner.Record(s, normalized, time.GetUtcNow());
+            accepted = next is not null;
+            return next ?? s;
+        }, ct);
+        if (updated is null) return Results.NotFound();
+        if (!accepted) return Results.Ok(new ArriveResponse(false));
+
+        var (title, body) = ArrivalPlanner.Notice(normalized);
+        var payload = ReminderPlanner.BuildPayload(title, body, "arrive", "./?screen=today");
+        try
+        {
+            var result = await sender.SendAsync(updated, payload, "arrive", ct);
+            if (result.Outcome != PushOutcome.Delivered)
+                loggers.CreateLogger("Arrivals").LogWarning(
+                    "Arrival notice for {Id} not delivered: {Outcome} {Status}", record.Id, result.Outcome, result.Status);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // приїзд уже збережено — сповіщення лише бонус
+            loggers.CreateLogger("Arrivals").LogWarning(ex, "Arrival notice for {Id} failed", record.Id);
+        }
+        return Results.Accepted(value: new ArriveResponse(true));
     }
 
     /// <summary>Перевіряє секрет підписки. Невідомий id і хибний секрет дають однакову відповідь.</summary>

@@ -48,6 +48,12 @@ export function reminderText(quest: Quest): { title: string; body: string } {
   };
 }
 
+/** Приїзд, який автоматизація iOS Shortcuts відмітила на сервері. */
+export interface ServerArrival {
+  place: string;
+  at: string;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -183,6 +189,41 @@ export class RemindersService {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /**
+   * Видає новий ключ приїздів (старий перестає діяти) і повертає початок URL для автоматизацій:
+   * далі дописується /home, /office або /gym.
+   */
+  async createArrivalLink(): Promise<{ baseUrl: string } | { error: string }> {
+    const push = this.push();
+    if (!push)
+      return { error: 'Спершу ввімкни нагадування: приїзди йдуть через той самий сервер.' };
+    try {
+      const { key } = await this.request<{ key: string }>(
+        'POST',
+        `/api/subscriptions/${push.id}/arrival-key`,
+        undefined,
+        push,
+      );
+      return { baseUrl: `${push.apiUrl}/api/arrive/${key}` };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) this.savePush(null);
+      return { error: errorText(err) };
+    }
+  }
+
+  /** Забирає з сервера приїзди, відмічені, поки застосунок був закритий. */
+  async claimArrivals(): Promise<ServerArrival[]> {
+    const push = this.push();
+    if (!push) return [];
+    const response = await this.request<{ arrivals?: ServerArrival[] }>(
+      'POST',
+      `/api/subscriptions/${push.id}/arrivals/claim`,
+      undefined,
+      push,
+    );
+    return Array.isArray(response?.arrivals) ? response.arrivals : [];
   }
 
   private updateSetting(questId: string, change: Partial<ReminderSetting>): void {

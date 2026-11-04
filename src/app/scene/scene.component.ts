@@ -9,6 +9,7 @@ import {
   input,
   viewChild,
 } from '@angular/core';
+import { Activity, LocationId } from '../game/activities';
 import { ActionKind, Spot } from '../game/quests';
 import { SceneEngine } from './scene-engine';
 
@@ -31,6 +32,7 @@ import { SceneEngine } from './scene-engine';
 export class SceneComponent {
   readonly sleeping = input(false);
   readonly breakfastDone = input(false);
+  readonly location = input<LocationId>('home');
   readonly label = input('Кімната героя');
 
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
@@ -41,6 +43,7 @@ export class SceneComponent {
 
     afterNextRender(() => {
       this.engine = new SceneEngine(this.canvas().nativeElement);
+      this.engine.setLocation(this.location());
       this.engine.setSleeping(this.sleeping());
       this.engine.setFlags({ breakfastDone: this.breakfastDone() });
       this.engine.renderOnce();
@@ -60,6 +63,8 @@ export class SceneComponent {
     effect(() => {
       const sleeping = this.sleeping();
       const breakfastDone = this.breakfastDone();
+      const location = this.location();
+      this.engine?.setLocation(location);
       this.engine?.setSleeping(sleeping);
       this.engine?.setFlags({ breakfastDone });
     });
@@ -67,6 +72,10 @@ export class SceneComponent {
 
   play(action: ActionKind, spot: Spot): Promise<void> {
     return this.engine ? this.engine.play(action, spot) : Promise.resolve();
+  }
+
+  playActivity(activity: Activity): Promise<void> {
+    return this.engine ? this.engine.playActivity(activity) : Promise.resolve();
   }
 
   goToBed(): Promise<void> {

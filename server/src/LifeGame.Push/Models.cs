@@ -45,6 +45,15 @@ public sealed record DayProgress
     public string[] DoneQuests { get; init; } = [];
 }
 
+/// <summary>Приїзд у збережене місце, про який повідомила автоматизація iOS Shortcuts.</summary>
+public sealed record Arrival
+{
+    /// <summary>home, office або gym.</summary>
+    public required string Place { get; init; }
+
+    public required DateTimeOffset At { get; init; }
+}
+
 /// <summary>Збережена підписка одного пристрою.</summary>
 public sealed record SubscriptionRecord
 {
@@ -67,6 +76,15 @@ public sealed record SubscriptionRecord
     public EventReminder[] Events { get; init; } = [];
 
     public DayProgress? Progress { get; init; }
+
+    /// <summary>SHA-256 від ключа приїздів (окремий від секрету: він уміє лише відмічати приїзди).</summary>
+    public string? ArrivalKeyHash { get; init; }
+
+    /// <summary>Приїзди, які застосунок ще не забрав.</summary>
+    public Arrival[] Arrivals { get; init; } = [];
+
+    /// <summary>Останній прийнятий приїзд — щоб відсіяти повтори геозони.</summary>
+    public Arrival? LastArrival { get; init; }
 
     /// <summary>
     /// Id нагадування → локальна дата (yyyy-MM-dd), коли його востаннє надіслано.
@@ -102,3 +120,9 @@ public sealed record EventsRequest(EventReminder[]? Events);
 public sealed record CreatedSubscriptionResponse(string Id, string Secret);
 
 public sealed record PublicKeyResponse(string PublicKey);
+
+public sealed record ArrivalKeyResponse(string Key);
+
+public sealed record ArrivalsResponse(Arrival[] Arrivals);
+
+public sealed record ArriveResponse(bool Accepted);

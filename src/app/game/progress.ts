@@ -1,4 +1,5 @@
 import { Quest, StatKey } from './quests';
+import { LocationId, parsePlaces, Place } from './activities';
 import { parseTodos, Todo } from './todos';
 
 export type Stats = Record<StatKey, number>;
@@ -13,6 +14,14 @@ export interface SaveData {
   days: Record<string, string[]>;
   /** Список справ (окремо від щоденних квестів). */
   todos: Todo[];
+  /** Активності за днями: 'YYYY-MM-DD' → id (можуть повторюватися). */
+  log: Record<string, string[]>;
+  /** Де зараз герой. */
+  location: LocationId;
+  /** Збережені за GPS місця. */
+  places: Place[];
+  /** Чи визначати місце за GPS, коли відкриваєш гру. */
+  tracking: boolean;
   sound: boolean;
 }
 
@@ -20,9 +29,13 @@ export function emptySave(): SaveData {
   return {
     version: 1,
     xp: 0,
-    stats: { strength: 0, intellect: 0, energy: 0, discipline: 0, work: 0 },
+    stats: { strength: 0, intellect: 0, energy: 0, discipline: 0, work: 0, love: 0 },
     days: {},
     todos: [],
+    log: {},
+    location: 'home',
+    places: [],
+    tracking: false,
     sound: true,
   };
 }
@@ -120,6 +133,24 @@ export function recentDays(
   return result;
 }
 
+const LOCATIONS: LocationId[] = ['home', 'office', 'gym', 'road', 'park', 'cafe'];
+
+export function isDateKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseDays(raw: unknown): Record<string, string[]> {
+  const days: Record<string, string[]> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [key, ids] of Object.entries(raw)) {
+      if (isDateKey(key) && Array.isArray(ids)) {
+        days[key] = ids.filter((id): id is string => typeof id === 'string');
+      }
+    }
+  }
+  return days;
+}
+
 /** Акуратно відновлює збереження: пошкоджені поля замінюються значеннями за замовчуванням. */
 export function parseSave(raw: string | null): SaveData {
   const base = emptySave();
@@ -134,7 +165,7 @@ export function parseSave(raw: string | null): SaveData {
     const days: SaveData['days'] = {};
     if (data.days && typeof data.days === 'object') {
       for (const [key, ids] of Object.entries(data.days)) {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(key) && Array.isArray(ids)) {
+        if (isDateKey(key) && Array.isArray(ids)) {
           days[key] = ids.filter((id): id is string => typeof id === 'string');
         }
       }
@@ -145,6 +176,12 @@ export function parseSave(raw: string | null): SaveData {
       stats,
       days,
       todos: parseTodos(data.todos),
+      log: parseDays(data.log),
+      location: LOCATIONS.includes(data.location as LocationId)
+        ? (data.location as LocationId)
+        : 'home',
+      places: parsePlaces(data.places),
+      tracking: data.tracking === true,
       sound: typeof data.sound === 'boolean' ? data.sound : true,
     };
   } catch {

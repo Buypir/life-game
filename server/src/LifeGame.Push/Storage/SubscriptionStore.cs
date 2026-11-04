@@ -39,6 +39,15 @@ public sealed class SubscriptionStore
         lock (_items) return _items.Values.FirstOrDefault(s => s.Endpoint == endpoint);
     }
 
+    public SubscriptionRecord? FindByArrivalKey(string keyHash)
+    {
+        lock (_items)
+            return _items.Values.FirstOrDefault(s =>
+                s.ArrivalKeyHash is { } hash &&
+                System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.ASCII.GetBytes(hash), System.Text.Encoding.ASCII.GetBytes(keyHash)));
+    }
+
     public Task UpsertAsync(SubscriptionRecord record, CancellationToken ct = default) =>
         MutateAsync(items => items[record.Id] = record, ct);
 
